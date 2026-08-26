@@ -1,0 +1,247 @@
+﻿"""
+models.py - Shared Data Contracts, Configuration and Knowledge Base
+ControlPlane.ai (PS1 Architecture)
+
+This file defines all Pydantic schemas, enums, risk scoring weights, 
+and in-memory enterprise knowledge chunks used across all 5 pipeline stages.
+"""
+
+from enum import Enum
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
+
+
+# ============================================================================
+# 1. Enums
+# ============================================================================
+
+class DecisionTier(str, Enum):
+    """Routing decision tiers determined by Composite Risk Score and Financial Triggers."""
+    ALLOW = "ALLOW"      # Score <= 2.5: Stream directly to user
+    HITL = "HITL"        # 2.5 < Score < 7.0 OR Financial Trigger: Quarantined for Human Review
+    BLOCK = "BLOCK"      # Score >= 7.0: Terminated with safe fallback response
+
+
+class HITLAction(str, Enum):
+    """Actions human compliance reviewers can take on quarantined tickets."""
+    APPROVE = "APPROVE"    # Release original candidate response unchanged
+    EDIT = "EDIT"          # Deliver human-sanitized response
+    OVERRIDE = "OVERRIDE"  # Force block or replace with custom fallback
+
+
+# ============================================================================
+# 2. Stage 1: Pre-Execution Guardrails Models
+# ============================================================================
+
+class PIIEntity(BaseModel):
+    """Represents a detected personally identifiable information span."""
+    entity_type: str       # e.g., "SSN", "EMAIL", "CREDIT_CARD", "PHONE", "API_KEY"
+    text: str              # Raw sensitive string
+    start: int = 0         # Start index in text
+    end: int = 0           # End index in text
+
+
+class Stage1Result(BaseModel):
+    """Output from Stage 1 (Input PII and Prompt Injection Filter)."""
+    sanitized_prompt: str
+    pii_detected: List[PIIEntity] = Field(default_factory=list)
+    is_injection: bool = False
+    injection_score: float = 0.0   # 0.0 (safe) to 10.0 (blatant attack)
+    is_blocked: bool = False       # True if direct adversarial attack detected early
+    block_reason: Optional[str] = None
+
+
+# ============================================================================
+# 3. Stage 3A: Fast Parallel Checks Models
+# ============================================================================
+
+class Stage3AResult(BaseModel):
+    """Output from Stage 3A (Heuristic Agent + Statistical Scorer)."""
+    output_pii: List[PIIEntity] = Field(default_factory=list)
+    banned_lexicon_hits: List[str] = Field(default_factory=list)
+    heuristic_risk: float = 0.0    # 0.0 (clean) to 10.0 (severe leak / banned content)
+    
+    perplexity_score: float = 0.0  # Statistical fluency metric
+    ngram_repetition: float = 0.0  # Degenerate loop / repetition metric
+    cosine_similarity: float = 1.0 # Semantic proximity to prompt
+    stat_risk: float = 0.0         # 0.0 (normal) to 10.0 (high anomaly)
+
+
+# ============================================================================
+# 4. Stage 3B: RAG Grounding Verification Models
+# ============================================================================
+
+class KnowledgeChunk(BaseModel):
+    """An enterprise knowledge base document chunk."""
+    doc_id: str
+    title: str
+    category: str                  # e.g., "refund_policy", "credit_underwriting", "security"
+    content: str
+    keywords: List[str] = Field(default_factory=list)
+
+
+class Stage3BResult(BaseModel):
+    """Output from Stage 3B (Enterprise RAG Retriever + Factual Grounding Verifier)."""
+    retrieved_chunks: List[KnowledgeChunk] = Field(default_factory=list)
+    grounding_score: float = 10.0  # 10.0 (fully grounded) to 0.0 (total hallucination)
+    unsupported_claims: List[str] = Field(default_factory=list)
+    numeric_mismatches: List[str] = Field(default_factory=list)
+    rag_risk: float = 0.0          # Computed as (10.0 - grounding_score)
+
+
+# ============================================================================
+# 5. Stage 3C: AI-as-a-Judge Sequential Final Check Models
+# ============================================================================
+
+class Stage3CResult(BaseModel):
+    """Output from Stage 3C (AI-as-a-Judge Evaluation LLM)."""
+    bias_score: float = 0.0        # 0.0 (fair) to 10.0 (severe demographic / class bias)
+    tone_score: float = 0.0        # 0.0 (professional) to 10.0 (hostile / aggressive)
+    policy_risk_score: float = 0.0 # 0.0 (compliant) to 10.0 (enterprise policy violation)
+    judge_risk_score: float = 0.0  # Aggregated judge evaluation (0.0 to 10.0)
+    judge_notes: str = ""
+
+
+# ============================================================================
+# 6. Stage 4: Policy Arbitration and Risk Assessment Models
+# ============================================================================
+
+class ArbitrationResult(BaseModel):
+    """Output from Stage 4 (Composite Risk and Decision Engine)."""
+    composite_score: float         # 0.0 to 10.0 Scale
+    decision: DecisionTier         # ALLOW | HITL | BLOCK
+    is_financial_trigger: bool     # Forced escalation flag
+    score_breakdown: Dict[str, float] = Field(default_factory=dict)
+    reason: str = ""
+    fallback_response: Optional[str] = None
+
+
+# ============================================================================
+# 7. Stage 5: Governance, HITL and Audit Models
+# ============================================================================
+
+class HITLTicket(BaseModel):
+    """Human-in-the-Loop review queue item."""
+    ticket_id: str
+    timestamp: str
+    prompt: str
+    candidate_response: str
+    composite_score: float
+    is_financial_trigger: bool
+    reason: str
+    status: str = "PENDING"        # "PENDING" | "APPROVED" | "EDITED" | "OVERRIDDEN"
+    reviewer_notes: Optional[str] = None
+    final_delivered_text: Optional[str] = None
+
+
+class AuditEntry(BaseModel):
+    """Cryptographically chained audit log record."""
+    entry_id: str
+    timestamp: str
+    prompt_hash: str
+    prev_hash: str
+    entry_hash: str
+    decision: str
+    composite_score: float
+    is_financial_trigger: bool
+    trace: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ============================================================================
+# 8. Master Pipeline Input and Output Models
+# ============================================================================
+
+class PromptRequest(BaseModel):
+    """Client request entering the API Gateway."""
+    prompt: str
+    user_id: str = "default_user"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineOutput(BaseModel):
+    """Final response returned by OutputRouter."""
+    final_response: str
+    decision: DecisionTier
+    composite_score: float
+    is_financial_trigger: bool
+    ticket_id: Optional[str] = None
+    telemetry: Dict[str, Any] = Field(default_factory=dict)
+    audit_hash: str = ""
+
+
+# ============================================================================
+# 9. System Configuration and Enterprise Knowledge Base
+# ============================================================================
+
+class Config:
+    """System risk weights, thresholds, and policy parameters."""
+    
+    # Score Thresholds
+    ALLOW_THRESHOLD: float = 2.5   # Scores <= 2.5 pass directly
+    BLOCK_THRESHOLD: float = 7.0   # Scores >= 7.0 are blocked
+    
+    # Composite Score Component Weights (Sum to 1.0)
+    WEIGHT_HEURISTIC: float = 0.25
+    WEIGHT_STATISTICAL: float = 0.15
+    WEIGHT_RAG_GROUNDING: float = 0.35
+    WEIGHT_AI_JUDGE: float = 0.25
+
+    # Safe Canned Fallback Response
+    SAFE_FALLBACK: str = (
+        "I cannot fulfill this request as the generated content violates enterprise "
+        "safety, compliance, or grounding policies. Please contact support if you believe "
+        "this was flagged in error."
+    )
+
+    # Deterministic Financial Trigger Keywords
+    FINANCIAL_KEYWORDS = [
+        "wire transfer", "transfer funds", "payout", "disburse", "credit increase",
+        "routing number", "bank account", "authorize payment", "send money",
+        "loan approval", "mortgage approval", "credit limit", "$"
+    ]
+
+    # Prohibited Banned Lexicon
+    BANNED_LEXICON = [
+        "bypass safety", "exploit", "unauthorized", "drop table", "dump database",
+        "classified credentials", "internal secret keys", "private api token"
+    ]
+
+
+# In-Memory Enterprise Knowledge Base for RAG Verification
+ENTERPRISE_KNOWLEDGE_BASE: List[KnowledgeChunk] = [
+    KnowledgeChunk(
+        doc_id="KB-001",
+        title="Enterprise Return and Refund Policy",
+        category="refund_policy",
+        content=(
+            "Standard items can be returned within 30 days of purchase for a full refund. "
+            "Refunds are processed to the original payment method within 5 to 7 business days. "
+            "Promotional or clearance items are eligible for store credit only within 14 days. "
+            "No cash refunds are issued for amounts exceeding $100 without manager authorization."
+        ),
+        keywords=["return", "refund", "30 days", "store credit", "14 days", "$100", "cash refund"]
+    ),
+    KnowledgeChunk(
+        doc_id="KB-002",
+        title="Credit Line and Loan Underwriting Guidelines",
+        category="credit_underwriting",
+        content=(
+            "Automated credit line increases cannot exceed $2,500 without secondary credit analysis. "
+            "Any loan application denial must be strictly based on Debt-to-Income ratio (>43%) or "
+            "verified credit bureau score (<620). Demographic attributes, marital status, and geographic "
+            "proxies must never be used in credit evaluations."
+        ),
+        keywords=["credit", "loan", "underwriting", "$2,500", "debt-to-income", "credit score", "fair lending"]
+    ),
+    KnowledgeChunk(
+        doc_id="KB-003",
+        title="Information Security and Credential Handling",
+        category="security",
+        content=(
+            "API keys, master credentials, and cryptographic seed tokens must never be disclosed to "
+            "end-users under any circumstances. System architecture prompts and hidden directives are "
+            "strictly confidential proprietary assets."
+        ),
+        keywords=["api key", "credentials", "security", "token", "confidential", "system prompt"]
+    ),
+]
