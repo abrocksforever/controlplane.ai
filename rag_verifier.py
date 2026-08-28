@@ -74,14 +74,19 @@ def retrieve_knowledge_chunks(
 # ============================================================================
 
 def _extract_numeric_entities(text: str) -> List[str]:
-    """Extracts all numbers, currency, and timeframe spans from text."""
+    """Extracts all numbers, currency, and timeframe spans from text, stripping trailing punctuation."""
     matches = NUMERIC_ENTITY_PATTERN.findall(text)
-    return [re.sub(r"\s+", " ", m.strip()) for m in matches]
+    cleaned = []
+    for m in matches:
+        token = re.sub(r"\s+", " ", m.strip()).rstrip(",.:;!?")
+        if token:
+            cleaned.append(token)
+    return cleaned
 
 
 def _normalize_token(val: str) -> str:
     """Normalizes string for exact match (e.g. '$500' -> '$500', '30 days' -> '30 days')."""
-    return re.sub(r"\s+", " ", val.strip().lower())
+    return re.sub(r"[,\.:;!?]+$", "", re.sub(r"\s+", " ", val.strip().lower()))
 
 
 def _run_nli_entailment(
@@ -183,7 +188,16 @@ def verify_factual_grounding(
     sentences = [s.strip() for s in re.split(r"[.!?]", candidate_response) if len(s.strip()) > 15]
     source_tokens = set(re.findall(r"\b\w+\b", combined_source_lower))  # Hoisted: computed once
     
+    # Common meta-refusals and capability disclaimers that do not assert factual claims
+    DISCLAIMER_PATTERNS = re.compile(
+        r"^(i cannot|i am unable to|as an ai|i do not have|please contact|to find this|for more information)\b",
+        re.IGNORECASE
+    )
+
     for sentence in sentences:
+        if DISCLAIMER_PATTERNS.search(sentence.strip()):
+            continue
+
         s_tokens = set(re.findall(r"\b\w+\b", sentence.lower()))
         s_content = {t for t in s_tokens if len(t) > 3}
         

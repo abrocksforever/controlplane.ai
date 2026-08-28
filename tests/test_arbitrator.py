@@ -230,5 +230,5 @@ class TestRouteOutput:
             reason="Financial trigger"
         )
         output = route_output(arb, "Response", "TICKET-001")
-        assert "compliance review" in output.lower()
+        assert "human review" in output.lower() or "human agent" in output.lower()
         assert "TICKET-001" in output

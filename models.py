@@ -182,6 +182,9 @@ class Config:
     with the CONTROLPLANE_ prefix (e.g., CONTROLPLANE_ALLOW_THRESHOLD=3.0).
     """
     
+    # Default LLM Model ID (overridable via CONTROLPLANE_LLM_MODEL)
+    DEFAULT_MODEL: str = os.environ.get("CONTROLPLANE_LLM_MODEL", "qwen/qwen3.8-27b")
+
     # Score Thresholds (overridable via CONTROLPLANE_ALLOW_THRESHOLD, CONTROLPLANE_BLOCK_THRESHOLD)
     ALLOW_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_ALLOW_THRESHOLD", "2.5"))
     BLOCK_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_BLOCK_THRESHOLD", "7.0"))
@@ -193,12 +196,19 @@ class Config:
     WEIGHT_RAG_GROUNDING: float = float(os.environ.get("CONTROLPLANE_WEIGHT_RAG_GROUNDING", "0.35"))
     WEIGHT_AI_JUDGE: float = float(os.environ.get("CONTROLPLANE_WEIGHT_AI_JUDGE", "0.25"))
 
-    # Safe Canned Fallback Response
+    # Safe Canned Fallback Response (for BLOCK)
     SAFE_FALLBACK: str = os.environ.get(
         "CONTROLPLANE_SAFE_FALLBACK",
         "I cannot fulfill this request as the generated content violates enterprise "
         "safety, compliance, or grounding policies. Please contact support if you believe "
         "this was flagged in error."
+    )
+
+    # Automated Handover Message (for HITL)
+    HITL_HANDOVER_MESSAGE: str = os.environ.get(
+        "CONTROLPLANE_HITL_HANDOVER",
+        "This request cannot be handled automatically and requires human review. "
+        "I am connecting you to a human agent from our team who will assist you shortly."
     )
 
     # Deterministic Financial Trigger Keywords

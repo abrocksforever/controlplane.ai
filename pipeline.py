@@ -97,10 +97,23 @@ def run_controlplane(
     # STAGE 2: Primary LLM Generation (PrimLLM on Sanitized Prompt)
     # ========================================================================
     t0 = time.perf_counter()
+    # Retrieve enterprise policy context if applicable
+    from rag_verifier import retrieve_knowledge_chunks
+    kb_chunks = retrieve_knowledge_chunks(stage1_res.sanitized_prompt, top_k=2)
+    if kb_chunks:
+        policy_context = "\n\n".join(f"[{c.title}]: {c.content}" for c in kb_chunks)
+        system_instruction = (
+            "You are a helpful and compliant enterprise assistant. "
+            "Use the following official enterprise policies to answer the user's inquiry accurately:\n\n"
+            f"{policy_context}"
+        )
+    else:
+        system_instruction = "You are a helpful and compliant enterprise assistant."
+
     try:
         candidate_response = call_llm(
             prompt=stage1_res.sanitized_prompt,
-            system_instruction="You are a helpful and compliant enterprise assistant."
+            system_instruction=system_instruction
         )
         if isinstance(candidate_response, dict):
             candidate_response = str(candidate_response)

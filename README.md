@@ -1,4 +1,4 @@
-﻿# ControlPlane.ai — Responsible AI Control Plane (Round 2 Prototype)
+# ControlPlane.ai — Responsible AI Control Plane (Round 2 Prototype)
 
 > **Problem Statement 1 (PS1)**: A modular, decoupled Responsible AI Control Plane featuring pre-execution guardrails, fast parallel heuristics, RAG factual grounding verification, AI-as-a-Judge compliance evaluation, 3-tier policy arbitration, and cryptographic SHA-256 hash-chained audit logging.
 
@@ -11,7 +11,12 @@
 pip install -r requirements.txt
 ```
 
-### 2. Run the Benchmark Demo (All 6 Scenarios)
+### 2. Run Interactive Live Terminal (Enter Custom Prompts)
+```bash
+python cli.py
+```
+
+### 3. Run the Benchmark Demo (All 6 Scenarios)
 ```bash
 python demo.py
 ```

@@ -1,4 +1,4 @@
-﻿"""
+"""
 arbitrator.py - Stage 4: Policy Arbitration & Risk Assessment
 ControlPlane.ai (PS1 Architecture)
 
@@ -92,10 +92,10 @@ def calculate_composite_score(
         Config.WEIGHT_AI_JUDGE * r_judge
     )
 
-    # If any single dimension is catastrophic (>= 9.0), elevate composite risk
-    max_single_risk = max(r_heuristic, r_rag, r_judge)
-    if max_single_risk >= 9.0:
-        composite = max(composite, max_single_risk)
+    # If heuristic leak or AI judge violation is critical (>= 9.0), elevate composite risk
+    max_critical_risk = max(r_heuristic, r_judge)
+    if max_critical_risk >= 9.0:
+        composite = max(composite, max_critical_risk)
 
     composite_score = min(10.0, max(0.0, round(composite, 2)))
 
@@ -190,9 +190,8 @@ def route_output(
     elif arbitration.decision == DecisionTier.BLOCK:
         return arbitration.fallback_response or Config.SAFE_FALLBACK
     elif arbitration.decision == DecisionTier.HITL:
-        ticket_str = f" [Ticket ID: {quarantined_ticket_id}]" if quarantined_ticket_id else ""
+        ticket_str = f" [Ticket Reference: {quarantined_ticket_id}]" if quarantined_ticket_id else ""
         return (
-            f"Your request has been routed to our compliance review team for verification.{ticket_str} "
-            f"Reason: {arbitration.reason}"
+            f"{Config.HITL_HANDOVER_MESSAGE}{ticket_str}"
         )
     return candidate_response

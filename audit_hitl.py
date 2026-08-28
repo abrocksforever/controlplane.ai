@@ -52,49 +52,18 @@ def _calculate_sha256(data: str) -> str:
 def get_latest_audit_hash(log_path: str = DEFAULT_LOG_PATH) -> str:
     """
     Retrieves the hash of the most recent audit entry in the chain.
-    Uses reverse file reading to find the last line efficiently (O(1) vs O(n)).
     """
     if not os.path.exists(log_path) or os.path.getsize(log_path) == 0:
         return GENESIS_HASH
 
     try:
-        with open(log_path, "rb") as f:
-            # Seek to end of file and scan backwards for last non-empty line
-            f.seek(0, 2)  # Seek to end
-            file_size = f.tell()
-            if file_size == 0:
-                return GENESIS_HASH
-            
-            # Read backwards in chunks to find last complete line
-            pos = file_size
-            last_line = b""
-            chunk_size = 4096
-            
-            while pos > 0:
-                read_size = min(chunk_size, pos)
-                pos -= read_size
-                f.seek(pos)
-                chunk = f.read(read_size)
-                lines = chunk.split(b"\n")
-                
-                # If we have accumulated content, prepend to the first fragment
-                if last_line:
-                    lines[-1] = lines[-1] + last_line
-                
-                # Search from end for a non-empty line
-                for line in reversed(lines):
-                    stripped = line.strip()
-                    if stripped:
-                        record = json.loads(stripped.decode("utf-8"))
-                        return record.get("entry_hash", GENESIS_HASH)
-                
-                last_line = lines[0]  # Fragment that may span previous chunk
-            
-            # Process remaining fragment
-            if last_line.strip():
-                record = json.loads(last_line.strip().decode("utf-8"))
-                return record.get("entry_hash", GENESIS_HASH)
-                
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in reversed(lines):
+                line = line.strip()
+                if line:
+                    record = json.loads(line)
+                    return record.get("entry_hash", GENESIS_HASH)
     except Exception as e:
         logger.error(f"Failed to read latest audit hash from '{log_path}': {e}")
         return GENESIS_HASH
@@ -246,10 +215,27 @@ class HITLQueueManager:
             status="PENDING"
         )
         self.tickets[ticket_id] = ticket
+        # Mirror to SQLite database
+        try:
+            from db import save_hitl_ticket
+            save_hitl_ticket(ticket)
+        except Exception as e:
+            logger.debug(f"SQLite ticket persist skipped: {e}")
+
         return ticket
 
     def get_ticket(self, ticket_id: str) -> Optional[HITLTicket]:
-        return self.tickets.get(ticket_id)
+        if ticket_id in self.tickets:
+            return self.tickets[ticket_id]
+        try:
+            from db import get_hitl_ticket
+            t = get_hitl_ticket(ticket_id)
+            if t:
+                self.tickets[t.ticket_id] = t
+                return t
+        except Exception:
+            pass
+        return None
 
     def list_pending_tickets(self) -> List[HITLTicket]:
         return [t for t in self.tickets.values() if t.status == "PENDING"]
@@ -265,7 +251,7 @@ class HITLQueueManager:
         Processes human reviewer decision (APPROVE | EDIT | OVERRIDE)
         and feeds outcome to the Active Learning store.
         """
-        ticket = self.tickets.get(ticket_id)
+        ticket = self.get_ticket(ticket_id)
         if not ticket:
             raise KeyError(f"Ticket '{ticket_id}' not found.")
 
@@ -289,13 +275,28 @@ class HITLQueueManager:
             feedback_type = "UNKNOWN_ACTION"
 
         # Record active learning feedback
+        now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.feedback_records.append({
             "ticket_id": ticket_id,
             "original_score": ticket.composite_score,
             "action": action.value,
             "feedback_type": feedback_type,
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            "timestamp": now_str
         })
+
+        # Mirror to SQLite database
+        try:
+            from db import save_hitl_ticket, record_feedback
+            save_hitl_ticket(ticket)
+            record_feedback(
+                ticket_id=ticket_id,
+                original_score=ticket.composite_score,
+                action=action.value,
+                feedback_type=feedback_type,
+                timestamp=now_str
+            )
+        except Exception as e:
+            logger.debug(f"SQLite feedback persist skipped: {e}")
 
         return ticket
 

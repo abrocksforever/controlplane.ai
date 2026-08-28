@@ -1,4 +1,4 @@
-﻿# ControlPlane.ai — Comprehensive System Architecture & Execution Guide
+# ControlPlane.ai — Comprehensive System Architecture & Execution Guide
 **Problem Statement 1: Responsible AI Control Plane (Round 2 Prototype)**
 
 ---
@@ -16,9 +16,10 @@
    - [Module 7: ai_judge.py (Stage 3C)](#module-7-ai_judgepy-stage-3c-ai-as-a-judge)
    - [Module 8: arbitrator.py (Stage 4)](#module-8-arbitratorpy-stage-4-policy-arbitration)
    - [Module 9: audit_hitl.py (Stage 5)](#module-9-audit_hitlpy-stage-5-governance-audit--hitl)
-   - [Module 10: pipeline.py (Master Orchestrator)](#module-10-pipelinepy-master-orchestrator)
-   - [Module 11: demo.py (Benchmark Runner)](#module-11-demopy-benchmark-runner)
-   - [Module 12: tests/ (Pytest Test Suite)](#module-12-tests-unit-test-suite)
+   - [Module 10: db.py (SQLite Persistence Layer)](#module-10-dbpy-sqlite-persistence-layer)
+   - [Module 11: pipeline.py (Master Orchestrator)](#module-11-pipelinepy-master-orchestrator)
+   - [Module 12: cli.py & demo.py (Interactive & Benchmark Runners)](#module-12-clipy--demopy-interactive--benchmark-runners)
+   - [Module 13: tests/ (Unit Test Suite)](#module-13-tests-unit-test-suite)
 4. [Mathematical Scoring & 3-Tier Arbitration Matrix](#4-mathematical-scoring--3-tier-arbitration-matrix)
 5. [Cryptographic Security & Fault-Tolerance Guarantees](#5-cryptographic-security--fault-tolerance-guarantees)
 6. [Operational & Verification Guide](#6-operational--verification-guide)
@@ -390,30 +391,56 @@ Satisfies enterprise compliance and regulatory requirements (EU AI Act, SOC2, HI
 
 ---
 
-### Module 10: `pipeline.py` (Master Orchestrator)
+---
+
+### Module 10: `db.py` (SQLite Persistence Layer)
+**Purpose**: Zero-dependency SQLite persistence layer using Python's built-in `sqlite3` for persistent HITL review queues, dynamic enterprise policy storage, and active learning analytics.
+
+#### Why it exists:
+Guarantees that quarantined HITL tickets, policy documents, and human reviewer annotations survive application restarts without requiring external database servers (PostgreSQL/Docker).
+
+#### Schema:
+- `knowledge_base`: `(doc_id TEXT PRIMARY KEY, title TEXT, category TEXT, content TEXT, keywords TEXT)`
+- `hitl_tickets`: `(ticket_id TEXT PRIMARY KEY, timestamp TEXT, prompt TEXT, candidate_response TEXT, composite_score REAL, is_financial_trigger INTEGER, reason TEXT, status TEXT, reviewer_notes TEXT, final_delivered_text TEXT)`
+- `feedback_store`: `(id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id TEXT, original_score REAL, action TEXT, feedback_type TEXT, timestamp TEXT)`
+
+#### Functions:
+1. `init_db(db_path: str = DEFAULT_DB_PATH) -> None`: Creates tables and seeds initial `ENTERPRISE_KNOWLEDGE_BASE` chunks if empty.
+2. `get_all_knowledge_chunks(db_path: str = DEFAULT_DB_PATH) -> List[KnowledgeChunk]`: Retrieves all active policy chunks.
+3. `upsert_knowledge_chunk(chunk: KnowledgeChunk, db_path: str = DEFAULT_DB_PATH) -> None`: Inserts or updates dynamic policy chunks.
+4. `save_hitl_ticket(ticket: HITLTicket, db_path: str = DEFAULT_DB_PATH) -> None`: Persists or updates a review ticket.
+5. `get_hitl_ticket(ticket_id: str, db_path: str = DEFAULT_DB_PATH) -> Optional[HITLTicket]`: Fetches a ticket by ID.
+6. `list_pending_hitl_tickets(db_path: str = DEFAULT_DB_PATH) -> List[HITLTicket]`: Returns all unreviewed pending tickets.
+7. `record_feedback(ticket_id, original_score, action, feedback_type, timestamp, db_path) -> None`: Records reviewer triage action.
+8. `get_policy_tuning_metrics_from_db(db_path) -> Dict[str, Any]`: Computes calibration metrics directly from database feedback.
+
+---
+
+### Module 11: `pipeline.py` (Master Orchestrator)
 **Purpose**: Coordinates the entire lifecycle of an incoming prompt through Stages 1 $\to$ 2 $\to$ 3A $\to$ 3B $\to$ 3C $\to$ 4 $\to$ 5.
 
 #### Functions:
-
-1. `run_controlplane(prompt: str, user_id: str = "default_user", auto_hitl_action: Optional[HITLAction] = None, log_path: str = "audit_log.jsonl") -> PipelineOutput`
+1. `run_controlplane(prompt: str, user_id: str = "default_user", auto_hitl_action: Optional[HITLAction] = None, log_path: str = "audit_log.jsonl") -> PipelineOutput`:
    - Primary orchestrator function.
-   - Generates trace ID, measures per-stage waterfall latencies, handles early injection termination, executes parallel and sequential checks, enqueues HITL tickets, writes audit entries, and returns typed `PipelineOutput`.
+   - Generates trace ID, injects retrieved RAG context into PrimLLM, measures per-stage waterfall latencies, handles early injection termination, executes parallel and sequential checks, enqueues HITL tickets, writes audit entries, and returns typed `PipelineOutput`.
 
 ---
 
-### Module 11: `demo.py` (Interactive Benchmark Runner)
-**Purpose**: Validates the complete pipeline against 6 core enterprise benchmark scenarios:
-1. **Scenario 1: Standard Safe Query** $\to$ Expected: `ALLOW`, score $\le 2.5$.
-2. **Scenario 2: Financial Transaction (Forced Escalation)** $\to$ Expected: `HITL`, `is_financial_trigger=True`.
-3. **Scenario 3: Input PII Redaction** $\to$ Expected: `[REDACTED_SSN]`, `[REDACTED_EMAIL]` delivered safely.
-4. **Scenario 4: Ungrounded Policy Claim** $\to$ Expected: Mismatches on `$500` and `90 days` $\to$ `HITL`.
-5. **Scenario 5: Adversarial Prompt Injection** $\to$ Expected: Early `BLOCK`, score $= 10.0$.
-6. **Scenario 6: Governance & Audit Verification** $\to$ Resolves pending ticket and cryptographically verifies SHA-256 chain integrity.
+### Module 12: `cli.py` & `demo.py` (Interactive & Benchmark Runners)
+**Purpose**:
+- **`cli.py`**: Interactive live terminal session allowing custom prompt entry, real-time waterfall latency visualization, score breakdown, and live HITL ticket triage resolution.
+- **`demo.py`**: Automated benchmark runner validating all 6 core enterprise scenarios:
+  1. *Scenario 1: Standard Safe Query* $\to$ `ALLOW`
+  2. *Scenario 2: Financial Transaction (Forced Escalation)* $\to$ `HITL`
+  3. *Scenario 3: Input PII Redaction* $\to$ `[REDACTED_SSN]`, `[REDACTED_EMAIL]`
+  4. *Scenario 4: Ungrounded Policy Claim* $\to$ `HITL`
+  5. *Scenario 5: Adversarial Prompt Injection* $\to$ `BLOCK`
+  6. *Scenario 6: Governance & Audit Verification* $\to$ Cryptographic SHA-256 chain verification proof.
 
 ---
 
-### Module 12: `tests/` (Unit Test Suite)
-**Purpose**: Comprehensive automated testing across all components.
+### Module 13: `tests/` (Unit Test Suite)
+**Purpose**: Comprehensive automated testing across all components (101 passing tests).
 
 | Test File | Target Module | Core Test Scenarios |
 | :--- | :--- | :--- |
@@ -422,6 +449,7 @@ Satisfies enterprise compliance and regulatory requirements (EU AI Act, SOC2, HI
 | **`test_rag_verifier.py`** | `rag_verifier.py` | Knowledge base retrieval, numeric entity extraction, grounded vs fabricated claims, custom KB injection, token normalization. |
 | **`test_arbitrator.py`** | `arbitrator.py` | Financial keyword triggers, large dollar detection, composite score formula, 3-tier routing matrix, output router deliveries. |
 | **`test_audit_hitl.py`** | `audit_hitl.py` | Genesis hash creation, SHA-256 chain continuity, tamper detection on corrupted records, HITL ticket lifecycle, policy tuning metrics. |
+| **`test_db.py`** | `db.py` | Database initialization, knowledge chunk seeding & upserting, HITL ticket persistence, pending ticket listing, feedback recording. |
 
 ---
 
