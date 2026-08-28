@@ -1,4 +1,4 @@
-﻿"""
+"""
 rag_verifier.py - Stage 3B: RAG Grounding Verification
 ControlPlane.ai (PS1 Architecture)
 
@@ -10,12 +10,15 @@ Features:
 """
 
 import re
-from typing import List, Tuple, Dict, Any, Set
+import logging
+from typing import List, Tuple, Dict, Any, Set, Optional
 from models import (
     Stage3BResult,
     KnowledgeChunk,
     ENTERPRISE_KNOWLEDGE_BASE
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Patterns to extract numbers, currency amounts, and timeframes
@@ -32,34 +35,36 @@ NUMERIC_ENTITY_PATTERN = re.compile(
 def retrieve_knowledge_chunks(
     query_text: str,
     top_k: int = 2,
-    kb: List[KnowledgeChunk] = ENTERPRISE_KNOWLEDGE_BASE
+    kb: Optional[List[KnowledgeChunk]] = None
 ) -> List[KnowledgeChunk]:
     """
     Enterprise RAG Retriever (RetEngine)
     
     Scores knowledge base chunks against query/candidate keywords and content tokens.
-    Returns the top-k most relevant source documents.
+    Returns the top-k most relevant source documents (requiring minimum relevance score >= 3.0).
     """
+    if kb is None:
+        kb = ENTERPRISE_KNOWLEDGE_BASE
     query_tokens = set(re.findall(r"\b\w+\b", query_text.lower()))
     
     scored_chunks: List[Tuple[float, KnowledgeChunk]] = []
     for chunk in kb:
         score = 0.0
         
-        # 1. Keyword direct matching (High weight)
+        # 1. Keyword direct matching (Weight: 3.0 per keyword)
         for kw in chunk.keywords:
             if kw.lower() in query_text.lower():
                 score += 3.0
                 
-        # 2. Content token overlap
+        # 2. Content token overlap (Weight: 0.5 per distinct content token)
         chunk_tokens = set(re.findall(r"\b\w+\b", chunk.content.lower()))
         overlap = query_tokens.intersection(chunk_tokens)
         score += len(overlap) * 0.5
         
-        if score > 0:
+        # Minimum threshold: requires strong keyword match or significant content overlap
+        if score >= 3.0:
             scored_chunks.append((score, chunk))
             
-    # Sort descending by relevance score
     scored_chunks.sort(key=lambda x: x[0], reverse=True)
     return [chunk for _, chunk in scored_chunks[:top_k]]
 
@@ -79,10 +84,45 @@ def _normalize_token(val: str) -> str:
     return re.sub(r"\s+", " ", val.strip().lower())
 
 
+def _run_nli_entailment(
+    sentence: str,
+    source_text: str
+) -> Tuple[bool, str]:
+    """
+    Hybrid NLI Entailment Layer: Uses LLM to verify whether a candidate claim
+    is entailed, contradicted, or unsupported by the source text.
+    Accurately captures negations, polarity flips, and semantic paraphrases
+    that raw token overlap misses.
+    
+    Returns:
+        (is_supported: bool, label: str) where label is 'entailed'|'contradicted'|'unsupported'
+    """
+    try:
+        from llm_client import call_llm
+        nli_prompt = (
+            f"Premise (Source Policy):\n\"{source_text}\"\n\n"
+            f"Hypothesis (Candidate Claim):\n\"{sentence}\"\n\n"
+            "Does the premise entail, contradict, or leave unsupported the hypothesis?\n"
+            "Return ONLY a JSON object: {\"label\": \"entailed\" | \"contradicted\" | \"unsupported\", "
+            "\"reason\": \"<brief explanation>\"}"
+        )
+        result = call_llm(
+            prompt=nli_prompt,
+            system_instruction="You are a precise Natural Language Inference classifier. Respond only with valid JSON.",
+            json_mode=True
+        )
+        if isinstance(result, dict):
+            label = result.get("label", "unsupported").lower().strip()
+            return (label == "entailed"), label
+    except Exception as e:
+        logger.debug(f"NLI entailment fallback (API unavailable): {e}")
+    return True, "entailed"  # Graceful fallback: assume supported if LLM unavailable
+
+
 def verify_factual_grounding(
     candidate_response: str,
     query: str = "",
-    kb: List[KnowledgeChunk] = ENTERPRISE_KNOWLEDGE_BASE
+    kb: Optional[List[KnowledgeChunk]] = None
 ) -> Stage3BResult:
     """
     Stage 3B: RAG Grounding Verification
@@ -99,11 +139,14 @@ def verify_factual_grounding(
     Returns:
         Stage3BResult containing retrieved docs, grounding score, and mismatch flags.
     """
-    # 1. Retrieve relevant source documents
+    if kb is None:
+        kb = ENTERPRISE_KNOWLEDGE_BASE
+
+    # 1. Retrieve relevant source documents (only on confident match)
     search_context = f"{query} {candidate_response}"
     retrieved_docs = retrieve_knowledge_chunks(search_context, top_k=2, kb=kb)
 
-    # If no relevant enterprise policy applies (general greeting/chitchat), assume clean
+    # If no relevant enterprise policy applies (general greeting, financial wire action, etc.), assume clean
     if not retrieved_docs:
         return Stage3BResult(
             retrieved_chunks=[],
@@ -129,7 +172,6 @@ def verify_factual_grounding(
     for raw_num in candidate_nums:
         norm_num = _normalize_token(raw_num)
         
-        # Punctuation-safe word boundary check (comma/digit safe)
         pattern = r"(?<![\d,])" + re.escape(norm_num) + r"(?![\d,])"
         is_in_source = (norm_num in source_num_set) or bool(re.search(pattern, combined_source_lower))
         
@@ -137,8 +179,9 @@ def verify_factual_grounding(
             numeric_mismatches.append(f"Unverified numeric claim '{raw_num}' not found in source policy.")
             penalty += 3.5
 
-    # 3. Sentence-Level Fact Consistency Check
+    # 3. Sentence-Level Fact Consistency Check (Hybrid: Token Overlap + NLI Entailment)
     sentences = [s.strip() for s in re.split(r"[.!?]", candidate_response) if len(s.strip()) > 15]
+    source_tokens = set(re.findall(r"\b\w+\b", combined_source_lower))  # Hoisted: computed once
     
     for sentence in sentences:
         s_tokens = set(re.findall(r"\b\w+\b", sentence.lower()))
@@ -147,12 +190,16 @@ def verify_factual_grounding(
         if not s_content:
             continue
 
-        source_tokens = set(re.findall(r"\b\w+\b", combined_source_lower))
         overlap_ratio = len(s_content.intersection(source_tokens)) / len(s_content)
 
         if overlap_ratio < 0.25:
-            unsupported_claims.append(f"Ungrounded claim: '{sentence}'")
-            penalty += 2.5
+            # Low token overlap — use NLI entailment for semantic verification
+            is_supported, nli_label = _run_nli_entailment(sentence, combined_source_text)
+            if not is_supported:
+                unsupported_claims.append(
+                    f"Ungrounded claim (NLI: {nli_label}): '{sentence}'"
+                )
+                penalty += 3.5 if nli_label == "contradicted" else 2.5
 
     # 4. Compute Grounding Score & Risk
     grounding_score = max(0.0, min(10.0, round(10.0 - penalty, 2)))

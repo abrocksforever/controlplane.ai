@@ -1,4 +1,4 @@
-﻿"""
+"""
 audit_hitl.py - Stage 5: Governance, Audit & Continuous Learning
 ControlPlane.ai (PS1 Architecture)
 
@@ -18,6 +18,9 @@ import os
 import json
 import hashlib
 import datetime
+import uuid
+import logging
+import threading
 from typing import List, Dict, Any, Optional, Tuple
 
 from models import (
@@ -27,9 +30,14 @@ from models import (
     ArbitrationResult
 )
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_LOG_PATH = "audit_log.jsonl"
 GENESIS_HASH = "0" * 64
+
+# Module-level locks for thread safety
+_audit_write_lock = threading.Lock()
+_ticket_id_lock = threading.Lock()
 
 
 # ============================================================================
@@ -42,22 +50,56 @@ def _calculate_sha256(data: str) -> str:
 
 
 def get_latest_audit_hash(log_path: str = DEFAULT_LOG_PATH) -> str:
-    """Retrieves the hash of the most recent audit entry in the chain."""
+    """
+    Retrieves the hash of the most recent audit entry in the chain.
+    Uses reverse file reading to find the last line efficiently (O(1) vs O(n)).
+    """
     if not os.path.exists(log_path) or os.path.getsize(log_path) == 0:
         return GENESIS_HASH
 
-    latest_hash = GENESIS_HASH
     try:
-        with open(log_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    record = json.loads(line)
-                    latest_hash = record.get("entry_hash", latest_hash)
-    except Exception:
+        with open(log_path, "rb") as f:
+            # Seek to end of file and scan backwards for last non-empty line
+            f.seek(0, 2)  # Seek to end
+            file_size = f.tell()
+            if file_size == 0:
+                return GENESIS_HASH
+            
+            # Read backwards in chunks to find last complete line
+            pos = file_size
+            last_line = b""
+            chunk_size = 4096
+            
+            while pos > 0:
+                read_size = min(chunk_size, pos)
+                pos -= read_size
+                f.seek(pos)
+                chunk = f.read(read_size)
+                lines = chunk.split(b"\n")
+                
+                # If we have accumulated content, prepend to the first fragment
+                if last_line:
+                    lines[-1] = lines[-1] + last_line
+                
+                # Search from end for a non-empty line
+                for line in reversed(lines):
+                    stripped = line.strip()
+                    if stripped:
+                        record = json.loads(stripped.decode("utf-8"))
+                        return record.get("entry_hash", GENESIS_HASH)
+                
+                last_line = lines[0]  # Fragment that may span previous chunk
+            
+            # Process remaining fragment
+            if last_line.strip():
+                record = json.loads(last_line.strip().decode("utf-8"))
+                return record.get("entry_hash", GENESIS_HASH)
+                
+    except Exception as e:
+        logger.error(f"Failed to read latest audit hash from '{log_path}': {e}")
         return GENESIS_HASH
 
-    return latest_hash
+    return GENESIS_HASH
 
 
 def log_audit_entry(
@@ -75,7 +117,7 @@ def log_audit_entry(
     prev_hash = get_latest_audit_hash(log_path)
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     prompt_hash = _calculate_sha256(prompt)
-    entry_id = f"AUDIT-{int(datetime.datetime.now().timestamp() * 1000)}"
+    entry_id = f"AUDIT-{uuid.uuid4().hex[:12].upper()}"
 
     # Construct canonical payload for hashing
     payload_dict = {
@@ -105,9 +147,10 @@ def log_audit_entry(
         trace=telemetry_trace
     )
 
-    # Append to JSONL log
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(audit_entry.model_dump_json() + "\n")
+    # Append to JSONL log (thread-safe)
+    with _audit_write_lock:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(audit_entry.model_dump_json() + "\n")
 
     return audit_entry
 
@@ -188,7 +231,8 @@ class HITLQueueManager:
         arbitration: ArbitrationResult
     ) -> HITLTicket:
         """Creates and enqueues a new quarantined ticket for human review."""
-        ticket_id = f"TICKET-{len(self.tickets) + 1:04d}"
+        with _ticket_id_lock:
+            ticket_id = f"TICKET-{uuid.uuid4().hex[:8].upper()}"
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         ticket = HITLTicket(
@@ -239,6 +283,10 @@ class HITLQueueManager:
                 edited_text or "This response was blocked by human compliance override."
             )
             feedback_type = "FORCE_BLOCK"
+        else:
+            logger.warning(f"Unhandled HITLAction: {action}. Treating as OVERRIDE.")
+            ticket.final_delivered_text = ticket.candidate_response
+            feedback_type = "UNKNOWN_ACTION"
 
         # Record active learning feedback
         self.feedback_records.append({

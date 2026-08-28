@@ -1,4 +1,4 @@
-﻿"""
+"""
 pii.py - Stage 1: Pre-Execution Guardrails (Robust PII Redaction & Weighted Injection Guard)
 ControlPlane.ai (PS1 Architecture)
 
@@ -9,8 +9,11 @@ Features:
 """
 
 import re
+import logging
 from typing import List, Tuple, Optional
 from models import Stage1Result, PIIEntity
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -24,6 +27,26 @@ PII_PATTERNS = {
     "PHONE": re.compile(r"(?:\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
     "API_KEY": re.compile(r"\b(?:sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})\b")
 }
+
+
+def _passes_luhn_check(card_number: str) -> bool:
+    """
+    Validates a credit card number using the Luhn algorithm (ISO/IEC 7812-1).
+    Filters out false positives from 16-digit order IDs, tracking numbers, etc.
+    """
+    digits = [int(d) for d in card_number if d.isdigit()]
+    if len(digits) < 13 or len(digits) > 19:
+        return False
+    
+    # Luhn: double every second digit from right, subtract 9 if > 9, sum all
+    checksum = 0
+    for i, digit in enumerate(reversed(digits)):
+        if i % 2 == 1:
+            doubled = digit * 2
+            checksum += doubled - 9 if doubled > 9 else doubled
+        else:
+            checksum += digit
+    return checksum % 10 == 0
 
 
 # ============================================================================
@@ -100,6 +123,11 @@ def filter_input_pii_and_injection(prompt: str) -> Stage1Result:
 
             # Discard if character range overlaps with an already extracted entity
             if _has_interval_overlap(start, end, detected_pii):
+                continue
+
+            # Post-match Luhn validation for credit cards to filter false positives
+            if entity_type == "CREDIT_CARD" and not _passes_luhn_check(raw_text):
+                logger.debug(f"Credit card candidate '{raw_text}' failed Luhn check, skipping.")
                 continue
 
             detected_pii.append(

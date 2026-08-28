@@ -1,4 +1,4 @@
-﻿"""
+"""
 models.py - Shared Data Contracts, Configuration and Knowledge Base
 ControlPlane.ai (PS1 Architecture)
 
@@ -6,6 +6,7 @@ This file defines all Pydantic schemas, enums, risk scoring weights,
 and in-memory enterprise knowledge chunks used across all 5 pipeline stages.
 """
 
+import os
 from enum import Enum
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -174,20 +175,27 @@ class PipelineOutput(BaseModel):
 # ============================================================================
 
 class Config:
-    """System risk weights, thresholds, and policy parameters."""
+    """
+    System risk weights, thresholds, and policy parameters.
     
-    # Score Thresholds
-    ALLOW_THRESHOLD: float = 2.5   # Scores <= 2.5 pass directly
-    BLOCK_THRESHOLD: float = 7.0   # Scores >= 7.0 are blocked
+    All numeric thresholds and weights can be overridden via environment variables
+    with the CONTROLPLANE_ prefix (e.g., CONTROLPLANE_ALLOW_THRESHOLD=3.0).
+    """
+    
+    # Score Thresholds (overridable via CONTROLPLANE_ALLOW_THRESHOLD, CONTROLPLANE_BLOCK_THRESHOLD)
+    ALLOW_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_ALLOW_THRESHOLD", "2.5"))
+    BLOCK_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_BLOCK_THRESHOLD", "7.0"))
     
     # Composite Score Component Weights (Sum to 1.0)
-    WEIGHT_HEURISTIC: float = 0.25
-    WEIGHT_STATISTICAL: float = 0.15
-    WEIGHT_RAG_GROUNDING: float = 0.35
-    WEIGHT_AI_JUDGE: float = 0.25
+    # Overridable via CONTROLPLANE_WEIGHT_HEURISTIC, etc.
+    WEIGHT_HEURISTIC: float = float(os.environ.get("CONTROLPLANE_WEIGHT_HEURISTIC", "0.25"))
+    WEIGHT_STATISTICAL: float = float(os.environ.get("CONTROLPLANE_WEIGHT_STATISTICAL", "0.15"))
+    WEIGHT_RAG_GROUNDING: float = float(os.environ.get("CONTROLPLANE_WEIGHT_RAG_GROUNDING", "0.35"))
+    WEIGHT_AI_JUDGE: float = float(os.environ.get("CONTROLPLANE_WEIGHT_AI_JUDGE", "0.25"))
 
     # Safe Canned Fallback Response
-    SAFE_FALLBACK: str = (
+    SAFE_FALLBACK: str = os.environ.get(
+        "CONTROLPLANE_SAFE_FALLBACK",
         "I cannot fulfill this request as the generated content violates enterprise "
         "safety, compliance, or grounding policies. Please contact support if you believe "
         "this was flagged in error."
