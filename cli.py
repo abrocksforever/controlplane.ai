@@ -24,6 +24,7 @@ def print_banner():
     print("  Type any customer or host prompt to inspect the 5-stage pipeline live.")
     print("  Commands:")
     print("    'status'  - View database counts (KB docs, pending tickets, reviews)")
+    print("    'history' - View recent conversation history across ALLOW, HITL, & BLOCK")
     print("    'kb'      - List loaded Airbnb policy documents")
     print("    'pending' - View all quarantined HITL tickets")
     print("    'verify'  - Verify SHA-256 cryptographic audit chain continuity")
@@ -88,6 +89,19 @@ def run_interactive_session():
                 for t in pending:
                     print(f"  - [{t.ticket_id}] Reason: {t.reason} | Score: {t.composite_score:.2f}")
                     print(f"    Prompt: \"{t.prompt}\"\n")
+            continue
+
+        if cmd == "history":
+            interactions = db.list_interactions(limit=15)
+            print(f"\nRecent Conversation History in SQLite ({len(interactions)} total):")
+            if not interactions:
+                print("  (No conversations recorded in SQLite yet)\n")
+            else:
+                for idx, item in enumerate(interactions, 1):
+                    dec_str = f"[{item['decision']}]"
+                    print(f"  {idx:02d}. {dec_str:7s} | Score: {item['composite_score']:4.2f} | Latency: {item['latency_ms']:6.1f}ms | Time: {item['timestamp'][:19]}")
+                    print(f"      Q: \"{item['prompt'][:60]}...\"")
+                    print(f"      A: \"{item['final_response'][:80]}...\"\n")
             continue
 
         if cmd == "verify":

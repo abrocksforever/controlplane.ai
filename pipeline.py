@@ -84,6 +84,20 @@ def run_controlplane(
         audit_entry = log_audit_entry(prompt, arbitration, telemetry, log_path=log_path)
         final_text = route_output(arbitration, "")
         
+        try:
+            import db
+            db.save_interaction(
+                trace_id=trace_id,
+                prompt=prompt,
+                decision=arbitration.decision.value,
+                composite_score=arbitration.composite_score,
+                final_response=final_text,
+                latency_ms=total_time_ms,
+                audit_hash=audit_entry.entry_hash
+            )
+        except Exception:
+            pass
+
         return PipelineOutput(
             final_response=final_text,
             decision=arbitration.decision,
@@ -200,6 +214,21 @@ def run_controlplane(
 
     # Write immutable SHA-256 hash-chained audit entry
     audit_entry = log_audit_entry(prompt, arbitration, telemetry, log_path=log_path)
+
+    # Mirror interaction to SQLite database
+    try:
+        import db
+        db.save_interaction(
+            trace_id=trace_id,
+            prompt=prompt,
+            decision=arbitration.decision.value,
+            composite_score=arbitration.composite_score,
+            final_response=delivered_response,
+            latency_ms=total_time_ms,
+            audit_hash=audit_entry.entry_hash
+        )
+    except Exception:
+        pass
 
     return PipelineOutput(
         final_response=delivered_response,

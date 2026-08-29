@@ -14,6 +14,7 @@ import glob
 import json
 import sqlite3
 import logging
+import datetime
 from typing import List, Dict, Any, Optional
 
 from models import KnowledgeChunk, HITLTicket
@@ -181,6 +182,21 @@ def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
                 action TEXT NOT NULL,
                 feedback_type TEXT NOT NULL,
                 timestamp TEXT NOT NULL
+            );
+        """)
+
+        # 4. Interaction History Table (All conversations: ALLOW, HITL, BLOCK)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                trace_id TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                composite_score REAL NOT NULL,
+                final_response TEXT NOT NULL,
+                latency_ms REAL NOT NULL,
+                audit_hash TEXT NOT NULL
             );
         """)
 
@@ -422,6 +438,45 @@ def get_policy_tuning_metrics_from_db(db_path: str = DEFAULT_DB_PATH) -> Dict[st
         }
 
 
+# ============================================================================
+# Interaction History Operations (All Conversations)
+# ============================================================================
+
+def save_interaction(
+    trace_id: str,
+    prompt: str,
+    decision: str,
+    composite_score: float,
+    final_response: str,
+    latency_ms: float,
+    audit_hash: str,
+    db_path: str = DEFAULT_DB_PATH
+) -> None:
+    """Saves every incoming conversation prompt, decision, and response to SQLite."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute("""
+            INSERT INTO interactions (timestamp, trace_id, prompt, decision, composite_score, final_response, latency_ms, audit_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (now_iso, trace_id, prompt, decision, composite_score, final_response, latency_ms, audit_hash))
+        conn.commit()
+
+
+def list_interactions(limit: int = 50, db_path: str = DEFAULT_DB_PATH) -> List[Dict[str, Any]]:
+    """Retrieves recent conversation interactions from SQLite."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, timestamp, trace_id, prompt, decision, composite_score, final_response, latency_ms, audit_hash
+            FROM interactions ORDER BY id DESC LIMIT ?;
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
 def reset_db(db_path: str = DEFAULT_DB_PATH) -> None:
     """
     Completely resets the SQLite database:
@@ -462,10 +517,12 @@ if __name__ == "__main__":
         chunks = get_all_knowledge_chunks()
         pending = list_pending_hitl_tickets()
         metrics = get_policy_tuning_metrics_from_db()
+        interactions = list_interactions(limit=1000)
         print(f"Database Status (controlplane.db):")
-        print(f"  - Knowledge Base Documents: {len(chunks)}")
-        print(f"  - Pending HITL Tickets:     {len(pending)}")
-        print(f"  - Total Feedback Reviews:   {metrics['total_reviews']}")
+        print(f"  - Knowledge Base Documents:    {len(chunks)}")
+        print(f"  - Total Recorded Interactions: {len(interactions)}")
+        print(f"  - Pending HITL Tickets:        {len(pending)}")
+        print(f"  - Total Feedback Reviews:      {metrics['total_reviews']}")
     else:
         init_db()
         print("Database initialized. Use --reset to re-seed or --status to view counts.")
