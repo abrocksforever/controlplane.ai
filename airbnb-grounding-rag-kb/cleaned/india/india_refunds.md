@@ -29,37 +29,16 @@ If you submitted multiple trip requests for the same dates and they were confirm
 
 You can learn how to change the dates for a reservation or you can find out how to ask your Host if they’d be willing to give you a refund, outside of their cancellation policy.
 
-# When you'll receive your refund
+## When you'll receive your refund
 
-UPI
+| Payment Method | Country | Refund Time            |
+| -------------- | ------- | ---------------------- |
+| UPI            | India   | 5–7 business days      |
+| Net Banking    | India   | 10–15 business days    |
+| RuPay          | India   | 10–15 business days    |
+| Google Pay     | India   | Up to 15 business days |
+| Razorpay       | India   | Up to 10 days          |
 
-India
-
-5-7 business days
-
-Net banking
-
-India
-
-10-15 business days
-
-RuPay
-
-India
-
-10-15 business days
-
-Google Pay
-
-India
-
-Up to 15 business days
-
-Razorpay
-
-India
-
-Up to 10 days
 
 ## Grounding constraints
 
