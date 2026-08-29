@@ -1,24 +1,34 @@
-﻿"""
+"""
 db.py - SQLite Persistence Layer for ControlPlane.ai
 ControlPlane.ai (PS1 Architecture)
 
 Provides a lightweight, zero-dependency persistence layer using Python built-in sqlite3:
 1. Persistent HITL Triage Queue (hitl_tickets)
-2. Dynamic Enterprise Policy Store (knowledge_base)
+2. Dynamic Enterprise Policy Store (knowledge_base with version 2 schema)
 3. Active Learning Feedback Store (feedback_store)
 """
 
 import os
+import re
+import glob
 import json
 import sqlite3
 import logging
 from typing import List, Dict, Any, Optional
 
-from models import KnowledgeChunk, HITLTicket, ENTERPRISE_KNOWLEDGE_BASE
+from models import KnowledgeChunk, HITLTicket
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = "controlplane.db"
+
+# English Stopwords to prevent BM25 IDF dilution
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "he",
+    "in", "is", "it", "its", "of", "on", "that", "the", "to", "was", "were",
+    "will", "with", "you", "your", "can", "our", "all", "any", "how", "what",
+    "when", "where", "which", "who", "why", "does", "have", "this", "or", "but"
+}
 
 
 def get_connection(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -28,23 +38,123 @@ def get_connection(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def parse_markdown_policy_file(file_path: str) -> Optional[KnowledgeChunk]:
+    """
+    Safely extracts YAML frontmatter and Markdown body with fallback validation.
+    Filters stopwords out of automatically extracted keywords.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", raw, re.DOTALL)
+        if match:
+            meta_block, content = match.group(1), match.group(2).strip()
+            meta = {}
+            for line in meta_block.splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    meta[k.strip()] = v.strip().strip("'\"")
+        else:
+            meta = {}
+            content = raw.strip()
+
+        doc_id = meta.get("document_id", os.path.splitext(os.path.basename(file_path))[0])
+        title = meta.get("title", doc_id.replace("_", " ").title())
+        category = meta.get("category", "general")
+        product = meta.get("product", "all")
+        audience = meta.get("audience", "guest")
+        region = meta.get("region", "global")
+        source_url = meta.get("source_url", f"https://www.airbnb.com/help/article/{doc_id}")
+
+        # Extract content keywords excluding stopwords
+        tokens = re.findall(r"\b[a-z0-9_$-]{3,}\b", (title + " " + content).lower())
+        keywords = [t for t in tokens if t not in STOPWORDS][:30]
+
+        return KnowledgeChunk(
+            doc_id=doc_id,
+            title=title,
+            category=category,
+            product=product,
+            audience=audience,
+            region=region,
+            source_url=source_url,
+            content=content,
+            keywords=keywords
+        )
+    except Exception as e:
+        logger.error(f"Failed parsing markdown policy '{file_path}': {e}")
+        return None
+
+
+def load_airbnb_corpus_chunks(corpus_dir: Optional[str] = None) -> List[KnowledgeChunk]:
+    """Loads and parses all 20 Markdown policy files from the Airbnb cleaned directory."""
+    if not corpus_dir:
+        # Check standard relative paths
+        candidates = [
+            "airbnb-grounding-rag-kb/cleaned",
+            os.path.join(os.path.dirname(__file__), "airbnb-grounding-rag-kb", "cleaned"),
+            os.path.join(os.getcwd(), "airbnb-grounding-rag-kb", "cleaned")
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                corpus_dir = c
+                break
+
+    chunks = []
+    if corpus_dir and os.path.exists(corpus_dir):
+        files = glob.glob(os.path.join(corpus_dir, "**", "*.md"), recursive=True)
+        for f in sorted(files):
+            chunk = parse_markdown_policy_file(f)
+            if chunk:
+                chunks.append(chunk)
+
+    return chunks
+
+
 def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
     """
-    Initializes database tables and seeds default enterprise knowledge base chunks.
+    Initializes database tables with schema versioning (PRAGMA user_version = 2)
+    and seeds all 20 Airbnb knowledge base documents.
     """
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
 
-        # 1. Knowledge Base Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS knowledge_base (
-                doc_id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                category TEXT NOT NULL,
-                content TEXT NOT NULL,
-                keywords TEXT NOT NULL
-            );
-        """)
+        # Check Schema Version
+        cursor.execute("PRAGMA user_version;")
+        version_row = cursor.fetchone()
+        current_version = version_row[0] if version_row else 0
+
+        if current_version < 2:
+            logger.info(f"Migrating database '{db_path}' to schema version 2...")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS knowledge_base_v2 (
+                    doc_id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    product TEXT NOT NULL DEFAULT 'all',
+                    audience TEXT NOT NULL DEFAULT 'guest',
+                    region TEXT NOT NULL DEFAULT 'global',
+                    source_url TEXT,
+                    content TEXT NOT NULL,
+                    keywords TEXT NOT NULL
+                );
+            """)
+
+            # Check if old table exists
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_base';")
+            if cursor.fetchone():
+                # Purge obsolete toy chunks (KB-001..003) and migrate non-toy data
+                cursor.execute("""
+                    INSERT OR IGNORE INTO knowledge_base_v2 (doc_id, title, category, content, keywords)
+                    SELECT doc_id, title, category, content, keywords FROM knowledge_base
+                    WHERE doc_id NOT LIKE 'KB-%';
+                """)
+                cursor.execute("DROP TABLE knowledge_base;")
+
+            cursor.execute("ALTER TABLE knowledge_base_v2 RENAME TO knowledge_base;")
+            cursor.execute("PRAGMA user_version = 2;")
+            conn.commit()
 
         # 2. HITL Review Queue Table
         cursor.execute("""
@@ -74,22 +184,29 @@ def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
             );
         """)
 
-        # Seed initial knowledge chunks if knowledge_base is empty
+        # Seed 20 Airbnb Knowledge Chunks
         cursor.execute("SELECT COUNT(*) as cnt FROM knowledge_base;")
         row = cursor.fetchone()
         if row and row["cnt"] == 0:
-            for chunk in ENTERPRISE_KNOWLEDGE_BASE:
-                cursor.execute("""
-                    INSERT INTO knowledge_base (doc_id, title, category, content, keywords)
-                    VALUES (?, ?, ?, ?, ?);
-                """, (
-                    chunk.doc_id,
-                    chunk.title,
-                    chunk.category,
-                    chunk.content,
-                    json.dumps(chunk.keywords)
-                ))
-            logger.info(f"Seeded {len(ENTERPRISE_KNOWLEDGE_BASE)} knowledge chunks into database.")
+            airbnb_chunks = load_airbnb_corpus_chunks()
+            if airbnb_chunks:
+                for chunk in airbnb_chunks:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO knowledge_base (
+                            doc_id, title, category, product, audience, region, source_url, content, keywords
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """, (
+                        chunk.doc_id,
+                        chunk.title,
+                        chunk.category,
+                        chunk.product or "all",
+                        chunk.audience or "guest",
+                        chunk.region or "global",
+                        chunk.source_url or "",
+                        chunk.content,
+                        json.dumps(chunk.keywords)
+                    ))
+                logger.info(f"Seeded {len(airbnb_chunks)} Airbnb knowledge chunks into '{db_path}'.")
 
         conn.commit()
 
@@ -103,7 +220,10 @@ def get_all_knowledge_chunks(db_path: str = DEFAULT_DB_PATH) -> List[KnowledgeCh
     init_db(db_path)
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT doc_id, title, category, content, keywords FROM knowledge_base;")
+        cursor.execute("""
+            SELECT doc_id, title, category, product, audience, region, source_url, content, keywords
+            FROM knowledge_base;
+        """)
         rows = cursor.fetchall()
         
         chunks = []
@@ -114,6 +234,10 @@ def get_all_knowledge_chunks(db_path: str = DEFAULT_DB_PATH) -> List[KnowledgeCh
                     doc_id=r["doc_id"],
                     title=r["title"],
                     category=r["category"],
+                    product=r["product"] if "product" in r.keys() else "all",
+                    audience=r["audience"] if "audience" in r.keys() else "guest",
+                    region=r["region"] if "region" in r.keys() else "global",
+                    source_url=r["source_url"] if "source_url" in r.keys() else None,
                     content=r["content"],
                     keywords=kw
                 )
@@ -127,17 +251,26 @@ def upsert_knowledge_chunk(chunk: KnowledgeChunk, db_path: str = DEFAULT_DB_PATH
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO knowledge_base (doc_id, title, category, content, keywords)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO knowledge_base (
+                doc_id, title, category, product, audience, region, source_url, content, keywords
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(doc_id) DO UPDATE SET
                 title=excluded.title,
                 category=excluded.category,
+                product=excluded.product,
+                audience=excluded.audience,
+                region=excluded.region,
+                source_url=excluded.source_url,
                 content=excluded.content,
                 keywords=excluded.keywords;
         """, (
             chunk.doc_id,
             chunk.title,
             chunk.category,
+            chunk.product or "all",
+            chunk.audience or "guest",
+            chunk.region or "global",
+            chunk.source_url or "",
             chunk.content,
             json.dumps(chunk.keywords)
         ))
@@ -259,18 +392,80 @@ def get_policy_tuning_metrics_from_db(db_path: str = DEFAULT_DB_PATH) -> Dict[st
         
         total = len(rows)
         if total == 0:
-            return {"total_reviews": 0, "approval_rate": 1.0, "override_rate": 0.0}
+            return {
+                "total_reviews": 0,
+                "allow_rate": 1.0,
+                "approval_rate": 1.0,
+                "edit_rate": 0.0,
+                "block_rate": 0.0,
+                "override_rate": 0.0
+            }
 
-        approvals = sum(1 for r in rows if r["action"] == "APPROVE")
+        allows = sum(1 for r in rows if r["action"] in ("ALLOW", "APPROVE"))
         edits = sum(1 for r in rows if r["action"] == "EDIT")
-        overrides = sum(1 for r in rows if r["action"] == "OVERRIDE")
+        blocks = sum(1 for r in rows if r["action"] in ("BLOCK", "OVERRIDE"))
+
+        allow_rate = round(allows / total, 3)
+        edit_rate = round(edits / total, 3)
+        block_rate = round(blocks / total, 3)
 
         return {
             "total_reviews": total,
-            "approval_rate": round(approvals / total, 3),
-            "edit_rate": round(edits / total, 3),
-            "override_rate": round(overrides / total, 3),
+            "allow_rate": allow_rate,
+            "approval_rate": allow_rate,
+            "edit_rate": edit_rate,
+            "block_rate": block_rate,
+            "override_rate": block_rate,
             "recommended_allow_threshold_adjustment": (
-                -0.1 if (overrides / total) > 0.3 else 0.05 if (approvals / total) > 0.7 else 0.0
+                -0.1 if (blocks / total) > 0.3 else 0.05 if (allows / total) > 0.7 else 0.0
             )
         }
+
+
+def reset_db(db_path: str = DEFAULT_DB_PATH) -> None:
+    """
+    Completely resets the SQLite database:
+    1. Removes existing database file if present.
+    2. Initializes clean schema version 2 tables.
+    3. Re-seeds all 20 authoritative Airbnb knowledge base documents.
+    """
+    if os.path.exists(db_path):
+        try:
+            os.remove(db_path)
+            logger.info(f"Removed existing database file '{db_path}'.")
+        except Exception as e:
+            logger.warning(f"Could not remove '{db_path}', wiping tables via SQL: {e}")
+            with get_connection(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS knowledge_base;")
+                cursor.execute("DROP TABLE IF EXISTS hitl_tickets;")
+                cursor.execute("DROP TABLE IF EXISTS feedback_store;")
+                cursor.execute("PRAGMA user_version = 0;")
+                conn.commit()
+
+    init_db(db_path)
+    chunks = get_all_knowledge_chunks(db_path)
+    print(f"Database '{db_path}' successfully reset and seeded with {len(chunks)} Airbnb knowledge chunks.")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="ControlPlane.ai SQLite Database Utility")
+    parser.add_argument("--reset", action="store_true", help="Reset database and re-seed all 20 Airbnb documents")
+    parser.add_argument("--status", action="store_true", help="Display current database record counts")
+    args = parser.parse_args()
+
+    if args.reset:
+        reset_db()
+    elif args.status:
+        init_db()
+        chunks = get_all_knowledge_chunks()
+        pending = list_pending_hitl_tickets()
+        metrics = get_policy_tuning_metrics_from_db()
+        print(f"Database Status (controlplane.db):")
+        print(f"  - Knowledge Base Documents: {len(chunks)}")
+        print(f"  - Pending HITL Tickets:     {len(pending)}")
+        print(f"  - Total Feedback Reviews:   {metrics['total_reviews']}")
+    else:
+        init_db()
+        print("Database initialized. Use --reset to re-seed or --status to view counts.")

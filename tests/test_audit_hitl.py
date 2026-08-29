@@ -165,9 +165,9 @@ class TestHITLQueueManager:
 
     def test_approve_resolves_ticket(self, manager, sample_arbitration):
         ticket = manager.enqueue("prompt", "candidate response", sample_arbitration)
-        resolved = manager.resolve_ticket(ticket.ticket_id, HITLAction.APPROVE)
+        resolved = manager.resolve_ticket(ticket.ticket_id, HITLAction.ALLOW)
         
-        assert resolved.status == "APPROVE"
+        assert resolved.status in ("ALLOW", "APPROVE")
         assert resolved.final_delivered_text == "candidate response"
 
     def test_edit_resolves_with_custom_text(self, manager, sample_arbitration):
@@ -182,8 +182,8 @@ class TestHITLQueueManager:
 
     def test_override_blocks_response(self, manager, sample_arbitration):
         ticket = manager.enqueue("prompt", "original", sample_arbitration)
-        resolved = manager.resolve_ticket(ticket.ticket_id, HITLAction.OVERRIDE)
-        assert resolved.status == "OVERRIDE"
+        resolved = manager.resolve_ticket(ticket.ticket_id, HITLAction.BLOCK)
+        assert resolved.status in ("BLOCK", "OVERRIDE")
         assert "blocked" in resolved.final_delivered_text.lower()
 
     def test_resolve_nonexistent_ticket_raises(self, manager):

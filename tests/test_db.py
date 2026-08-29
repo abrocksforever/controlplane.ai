@@ -1,4 +1,4 @@
-﻿"""
+"""
 test_db.py - Tests for SQLite Persistence Layer (db.py)
 """
 
@@ -30,11 +30,12 @@ def temp_db(tmp_path):
 
 def test_init_db_seeds_knowledge_base(temp_db):
     chunks = get_all_knowledge_chunks(temp_db)
-    assert len(chunks) >= 3
+    assert len(chunks) == 20
     doc_ids = {c.doc_id for c in chunks}
-    assert "KB-001" in doc_ids
-    assert "KB-002" in doc_ids
-    assert "KB-003" in doc_ids
+    assert "home_cancellation_policies" in doc_ids
+    assert "india_refunds" in doc_ids
+    assert "aircover_guests" in doc_ids
+    assert "major_disruptive_events" in doc_ids
 
 
 def test_upsert_knowledge_chunk(temp_db):

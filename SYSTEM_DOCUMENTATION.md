@@ -291,16 +291,18 @@ Immediately catches leaked credentials in output, prohibited enterprise keywords
 ---
 
 ### Module 6: `rag_verifier.py` (Stage 3B: RAG Grounding Verification)
-**Purpose**: Retrieval of authoritative enterprise policies and factual verification of candidate claims.
+**Purpose**: Multi-document BM25 retrieval of authoritative Airbnb policies and factual verification of candidate claims.
 
 #### Why it exists:
-LLMs hallucinate plausible-sounding numbers and policies (e.g. fabricating a "90-day cash refund up to $500" when the company policy allows only "30 days" and caps cash refunds at "$100").
+Prevents hallucinated cancellation rules, fabricated refund timelines, and invalid policy promises (e.g. guaranteeing an unconditional 100% refund on a strict policy, or claiming 24-hour UPI refunds when the policy specifies 15 business days).
 
 #### Key Algorithms & Logic:
-- **RetEngine**: Keyword and content token relevance retrieval from `ENTERPRISE_KNOWLEDGE_BASE` with confidence threshold (`score >= 3.0`).
-- **Exact Numeric & Entity Extraction**: Regex extraction of monetary amounts (`$500`, `$2,500`), timeframes (`30 days`, `14 days`), and percentages (`>43%`), verifying exact presence in source text.
-- **Hybrid NLI Entailment Layer (`_run_nli_entailment`)**: Uses Groq LLM to verify whether candidate sentences with low token overlap are *entailed*, *contradicted*, or *unsupported* by the source document premise. This resolves false alarms on natural paraphrases and catches negated contradictions (*"We do NOT offer refunds"*).
-- **Grounding Score ($G \in [0, 10]$)**: Fully grounded output scores $10.0$ ($RAG\_Risk = 0.0$). Contradictions and unverified numbers penalize $G$.
+- **Canonical BM25 Retriever (`RetEngine`)**: Token-boundary matching (`\b[a-z0-9_$-]+\b`) with standard English stopword filtering (`STOPWORDS`), inverse document frequency (IDF) weighting, and metadata boosts ($1.3\times - 1.5\times$) for product (`home` vs `service`) and region (`india` vs `global`).
+- **Standalone Factual Assertion Detector (`evaluate_factual_assertions`)**: Eliminates the "no docs = free pass" blind spot by inspecting responses when $|\text{Docs}| = 0$. If policy/numeric claims are made without evidence, assigns `VerificationStatus.UNVERIFIED_ASSERTION` ($R_{\text{rag}} = 7.0$), safely quarantining to `HITL`.
+- **Absolute Universal Guarantee Detector (`ABSOLUTE_GUARANTEE_PATTERN`)**: Detects false universal promises (*"every reservation provides a 100% refund regardless of policy"*) that contradict conditional host listing tiers.
+- **Extended Numeric & Timeframe Extraction**: Regex extraction of monetary amounts (`$500`, `$2,000`), timeframes (`24 hours`, `72 hours`, `28 nights`, `15 business days`), and percentages.
+- **Hybrid NLI Entailment Layer (`_run_nli_entailment`)**: Uses LLM to verify whether candidate sentences are *entailed*, *contradicted*, or *unsupported* by the source document premise.
+- **Mathematical Confidence & Status**: Assigns explicit `VerificationStatus` (`VERIFIED_GROUNDED`, `PARTIALLY_GROUNDED`, `CONTRADICTED`, `UNVERIFIED_ASSERTION`, `GENERAL_CONVERSATION`) and `verification_confidence \in [0.0, 1.0]`.
 
 #### Functions:
 
@@ -394,19 +396,19 @@ Satisfies enterprise compliance and regulatory requirements (EU AI Act, SOC2, HI
 ---
 
 ### Module 10: `db.py` (SQLite Persistence Layer)
-**Purpose**: Zero-dependency SQLite persistence layer using Python's built-in `sqlite3` for persistent HITL review queues, dynamic enterprise policy storage, and active learning analytics.
+**Purpose**: Zero-dependency SQLite persistence layer using Python's built-in `sqlite3` for persistent HITL review queues, version 2 dynamic policy storage (with `product`, `audience`, `region`, `source_url`), and active learning analytics.
 
 #### Why it exists:
-Guarantees that quarantined HITL tickets, policy documents, and human reviewer annotations survive application restarts without requiring external database servers (PostgreSQL/Docker).
+Guarantees that quarantined HITL tickets, the 20 authoritative Airbnb policy markdown documents, and human reviewer annotations survive application restarts without requiring external database servers (PostgreSQL/Docker).
 
-#### Schema:
-- `knowledge_base`: `(doc_id TEXT PRIMARY KEY, title TEXT, category TEXT, content TEXT, keywords TEXT)`
+#### Schema (Version 2):
+- `knowledge_base`: `(doc_id TEXT PRIMARY KEY, title TEXT, category TEXT, product TEXT, audience TEXT, region TEXT, source_url TEXT, content TEXT, keywords TEXT)`
 - `hitl_tickets`: `(ticket_id TEXT PRIMARY KEY, timestamp TEXT, prompt TEXT, candidate_response TEXT, composite_score REAL, is_financial_trigger INTEGER, reason TEXT, status TEXT, reviewer_notes TEXT, final_delivered_text TEXT)`
 - `feedback_store`: `(id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id TEXT, original_score REAL, action TEXT, feedback_type TEXT, timestamp TEXT)`
 
 #### Functions:
-1. `init_db(db_path: str = DEFAULT_DB_PATH) -> None`: Creates tables and seeds initial `ENTERPRISE_KNOWLEDGE_BASE` chunks if empty.
-2. `get_all_knowledge_chunks(db_path: str = DEFAULT_DB_PATH) -> List[KnowledgeChunk]`: Retrieves all active policy chunks.
+1. `init_db(db_path: str = DEFAULT_DB_PATH) -> None`: Performs `PRAGMA user_version = 2` schema migration and seeds all 20 Markdown files from `airbnb-grounding-rag-kb/cleaned/`.
+2. `get_all_knowledge_chunks(db_path: str = DEFAULT_DB_PATH) -> List[KnowledgeChunk]`: Retrieves all active policy chunks with metadata.
 3. `upsert_knowledge_chunk(chunk: KnowledgeChunk, db_path: str = DEFAULT_DB_PATH) -> None`: Inserts or updates dynamic policy chunks.
 4. `save_hitl_ticket(ticket: HITLTicket, db_path: str = DEFAULT_DB_PATH) -> None`: Persists or updates a review ticket.
 5. `get_hitl_ticket(ticket_id: str, db_path: str = DEFAULT_DB_PATH) -> Optional[HITLTicket]`: Fetches a ticket by ID.
@@ -422,34 +424,35 @@ Guarantees that quarantined HITL tickets, policy documents, and human reviewer a
 #### Functions:
 1. `run_controlplane(prompt: str, user_id: str = "default_user", auto_hitl_action: Optional[HITLAction] = None, log_path: str = "audit_log.jsonl") -> PipelineOutput`:
    - Primary orchestrator function.
-   - Generates trace ID, injects retrieved RAG context into PrimLLM, measures per-stage waterfall latencies, handles early injection termination, executes parallel and sequential checks, enqueues HITL tickets, writes audit entries, and returns typed `PipelineOutput`.
+   - Generates trace ID, injects retrieved RAG context into PrimLLM with dynamic system persona, measures per-stage waterfall latencies, handles early injection termination, executes parallel and sequential checks, enqueues HITL tickets, writes audit entries, and returns typed `PipelineOutput`.
 
 ---
 
-### Module 12: `cli.py` & `demo.py` (Interactive & Benchmark Runners)
+### Module 12: `cli.py`, `demo.py`, & `benchmark_airbnb.py` (CLI & Evaluation Engines)
 **Purpose**:
 - **`cli.py`**: Interactive live terminal session allowing custom prompt entry, real-time waterfall latency visualization, score breakdown, and live HITL ticket triage resolution.
-- **`demo.py`**: Automated benchmark runner validating all 6 core enterprise scenarios:
-  1. *Scenario 1: Standard Safe Query* $\to$ `ALLOW`
-  2. *Scenario 2: Financial Transaction (Forced Escalation)* $\to$ `HITL`
-  3. *Scenario 3: Input PII Redaction* $\to$ `[REDACTED_SSN]`, `[REDACTED_EMAIL]`
-  4. *Scenario 4: Ungrounded Policy Claim* $\to$ `HITL`
-  5. *Scenario 5: Adversarial Prompt Injection* $\to$ `BLOCK`
+- **`demo.py`**: Automated demo runner validating 6 realistic Airbnb customer support scenarios:
+  1. *Scenario 1: Standard Safe Query (India UPI Refund)* $\to$ `ALLOW` ($S = 0.00$)
+  2. *Scenario 2: Financial Transaction (Host Security Deposit Payout)* $\to$ `HITL` (`is_financial_trigger=True`)
+  3. *Scenario 3: Input PII Redaction (Credit Card & Email Masking)* $\to$ `ALLOW` (`[REDACTED_EMAIL]`)
+  4. *Scenario 4: Ungrounded Policy Contradiction (Cancellation Trap)* $\to$ `HITL` ($S = 2.95$)
+  5. *Scenario 5: Adversarial Prompt Injection (DAN Jailbreak Attack)* $\to$ `BLOCK` ($S = 10.00$, $<1\text{ms}$)
   6. *Scenario 6: Governance & Audit Verification* $\to$ Cryptographic SHA-256 chain verification proof.
+- **`benchmark_airbnb.py`**: Official 50-question Grounding & Safety Benchmark Suite supporting deterministic offline evaluation (1.7s total wall time) and live API evaluation (`--live`). Evaluates precision, recall, hallucination block rate, and audit hash continuity.
 
 ---
 
 ### Module 13: `tests/` (Unit Test Suite)
-**Purpose**: Comprehensive automated testing across all components (101 passing tests).
+**Purpose**: Comprehensive automated testing across all components (103 passing tests).
 
 | Test File | Target Module | Core Test Scenarios |
 | :--- | :--- | :--- |
-| **`test_pii.py`** | `pii.py` | Luhn valid/invalid card checks, PII entity extraction, reverse offset slicing, DAN injection attacks, interval overlap collision checks. |
-| **`test_fast_checks.py`** | `fast_checks.py` | Leaked API keys/SSNs in output, banned lexicon, N-Gram repetition loops, Shannon entropy bounds, semantic prefix overlap. |
-| **`test_rag_verifier.py`** | `rag_verifier.py` | Knowledge base retrieval, numeric entity extraction, grounded vs fabricated claims, custom KB injection, token normalization. |
-| **`test_arbitrator.py`** | `arbitrator.py` | Financial keyword triggers, large dollar detection, composite score formula, 3-tier routing matrix, output router deliveries. |
-| **`test_audit_hitl.py`** | `audit_hitl.py` | Genesis hash creation, SHA-256 chain continuity, tamper detection on corrupted records, HITL ticket lifecycle, policy tuning metrics. |
-| **`test_db.py`** | `db.py` | Database initialization, knowledge chunk seeding & upserting, HITL ticket persistence, pending ticket listing, feedback recording. |
+| **`test_pii.py`** | `pii.py` | Luhn valid/invalid card checks, PII entity extraction, reverse offset slicing, DAN injection attacks, interval overlap collision checks (25 tests). |
+| **`test_fast_checks.py`** | `fast_checks.py` | Leaked API keys/SSNs in output, banned lexicon, N-Gram repetition loops, Shannon entropy bounds, semantic prefix overlap (16 tests). |
+| **`test_rag_verifier.py`** | `rag_verifier.py` | BM25 retrieval, metadata filtering, numeric & timeframe entity extraction (`$500`, `24 hours`, `28 nights`), standalone assertion detection (`UNVERIFIED_ASSERTION`), universal guarantee contradiction checks, and token normalization (17 tests). |
+| **`test_arbitrator.py`** | `arbitrator.py` | Composite score weighting, financial trigger detection, unverified assertion flooring, 3-tier routing, and handover text generation (20 tests). |
+| **`test_audit_hitl.py`** | `audit_hitl.py` | SHA-256 hash chaining, genesis hash, tampering detection, queue management (`ALLOW`/`EDIT`/`BLOCK`), active feedback calibration (17 tests). |
+| **`test_db.py`** | `db.py` | SQLite schema version 2 initialization, 20-doc seeding, chunk upserts, ticket persistence, and feedback metrics (5 tests). |
 
 ---
 

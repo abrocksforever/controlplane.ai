@@ -258,19 +258,19 @@ class HITLQueueManager:
         ticket.status = action.value
         ticket.reviewer_notes = reviewer_notes or f"Resolved via action: {action.value}"
 
-        if action == HITLAction.APPROVE:
+        if action in (HITLAction.ALLOW, HITLAction.APPROVE):
             ticket.final_delivered_text = ticket.candidate_response
             feedback_type = "TRUE_ALLOW"
         elif action == HITLAction.EDIT:
             ticket.final_delivered_text = edited_text or ticket.candidate_response
             feedback_type = "EDIT_SANITIZED"
-        elif action == HITLAction.OVERRIDE:
+        elif action in (HITLAction.BLOCK, HITLAction.OVERRIDE):
             ticket.final_delivered_text = (
-                edited_text or "This response was blocked by human compliance override."
+                edited_text or "This request was blocked by human compliance review."
             )
             feedback_type = "FORCE_BLOCK"
         else:
-            logger.warning(f"Unhandled HITLAction: {action}. Treating as OVERRIDE.")
+            logger.warning(f"Unhandled HITLAction: {action}. Treating as BLOCK.")
             ticket.final_delivered_text = ticket.candidate_response
             feedback_type = "UNKNOWN_ACTION"
 
@@ -304,19 +304,32 @@ class HITLQueueManager:
         """Calculates calibration feedback metrics for Policy Matrix Optimizer."""
         total = len(self.feedback_records)
         if total == 0:
-            return {"total_reviews": 0, "approval_rate": 1.0, "override_rate": 0.0}
+            return {
+                "total_reviews": 0,
+                "allow_rate": 1.0,
+                "approval_rate": 1.0,
+                "edit_rate": 0.0,
+                "block_rate": 0.0,
+                "override_rate": 0.0
+            }
 
-        approvals = sum(1 for r in self.feedback_records if r["action"] == HITLAction.APPROVE.value)
-        edits = sum(1 for r in self.feedback_records if r["action"] == HITLAction.EDIT.value)
-        overrides = sum(1 for r in self.feedback_records if r["action"] == HITLAction.OVERRIDE.value)
+        allows = sum(1 for r in self.feedback_records if r["action"] in ("ALLOW", "APPROVE"))
+        edits = sum(1 for r in self.feedback_records if r["action"] == "EDIT")
+        blocks = sum(1 for r in self.feedback_records if r["action"] in ("BLOCK", "OVERRIDE"))
+
+        allow_rate = round(allows / total, 3)
+        edit_rate = round(edits / total, 3)
+        block_rate = round(blocks / total, 3)
 
         return {
             "total_reviews": total,
-            "approval_rate": round(approvals / total, 3),
-            "edit_rate": round(edits / total, 3),
-            "override_rate": round(overrides / total, 3),
+            "allow_rate": allow_rate,
+            "approval_rate": allow_rate,
+            "edit_rate": edit_rate,
+            "block_rate": block_rate,
+            "override_rate": block_rate,
             "recommended_allow_threshold_adjustment": (
-                -0.1 if (overrides / total) > 0.3 else 0.05 if (approvals / total) > 0.7 else 0.0
+                -0.1 if (blocks / total) > 0.3 else 0.05 if (allows / total) > 0.7 else 0.0
             )
         }
 

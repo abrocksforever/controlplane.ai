@@ -92,6 +92,10 @@ def calculate_composite_score(
         Config.WEIGHT_AI_JUDGE * r_judge
     )
 
+    # If unverified domain assertion with 0 matching docs, floor risk in HITL range
+    if stage3b_res and getattr(stage3b_res, "verification_status", None) == "UNVERIFIED_ASSERTION":
+        composite = max(composite, 3.0)
+
     # If heuristic leak or AI judge violation is critical (>= 9.0), elevate composite risk
     max_critical_risk = max(r_heuristic, r_judge)
     if max_critical_risk >= 9.0:

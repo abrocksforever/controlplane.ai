@@ -25,9 +25,22 @@ class DecisionTier(str, Enum):
 
 class HITLAction(str, Enum):
     """Actions human compliance reviewers can take on quarantined tickets."""
-    APPROVE = "APPROVE"    # Release original candidate response unchanged
-    EDIT = "EDIT"          # Deliver human-sanitized response
-    OVERRIDE = "OVERRIDE"  # Force block or replace with custom fallback
+    ALLOW = "ALLOW"      # Release original candidate response unchanged
+    EDIT = "EDIT"        # Deliver human-sanitized/corrected response
+    BLOCK = "BLOCK"      # Force block and deliver safe canned fallback
+
+    # Aliases for backward compatibility
+    APPROVE = "ALLOW"
+    OVERRIDE = "BLOCK"
+
+
+class VerificationStatus(str, Enum):
+    """Factual grounding verification status from Stage 3B."""
+    VERIFIED_GROUNDED = "VERIFIED_GROUNDED"        # Docs matched, claims entailed (G >= 7.0)
+    PARTIALLY_GROUNDED = "PARTIALLY_GROUNDED"      # Docs matched, minor gaps (3.0 <= G < 7.0)
+    CONTRADICTED = "CONTRADICTED"                  # Docs matched, factual conflict (G < 3.0)
+    UNVERIFIED_ASSERTION = "UNVERIFIED_ASSERTION"  # 0 docs matched, but factual claims made
+    GENERAL_CONVERSATION = "GENERAL_CONVERSATION"  # 0 docs matched, no claims (greetings/thanks)
 
 
 # ============================================================================
@@ -73,12 +86,16 @@ class Stage3AResult(BaseModel):
 # ============================================================================
 
 class KnowledgeChunk(BaseModel):
-    """An enterprise knowledge base document chunk."""
+    """An enterprise knowledge base document chunk with provenance metadata."""
     doc_id: str
     title: str
-    category: str                  # e.g., "refund_policy", "credit_underwriting", "security"
+    category: str                  # e.g., "cancellation", "refund", "india", "exceptions"
     content: str
     keywords: List[str] = Field(default_factory=list)
+    product: Optional[str] = "all"      # "home" | "service" | "all"
+    audience: Optional[str] = "guest"   # "guest" | "host" | "guest_host"
+    region: Optional[str] = "global"    # "global" | "india"
+    source_url: Optional[str] = None    # Official Help Center URL
 
 
 class Stage3BResult(BaseModel):
@@ -88,6 +105,8 @@ class Stage3BResult(BaseModel):
     unsupported_claims: List[str] = Field(default_factory=list)
     numeric_mismatches: List[str] = Field(default_factory=list)
     rag_risk: float = 0.0          # Computed as (10.0 - grounding_score)
+    verification_confidence: float = 1.0  # Mathematical confidence in [0.0, 1.0]
+    verification_status: VerificationStatus = VerificationStatus.VERIFIED_GROUNDED
 
 
 # ============================================================================
@@ -211,11 +230,20 @@ class Config:
         "I am connecting you to a human agent from our team who will assist you shortly."
     )
 
+    # Configurable System Prompt Persona
+    SYSTEM_PERSONA: str = os.environ.get(
+        "CONTROLPLANE_SYSTEM_PERSONA",
+        "You are an official, helpful, and compliant customer support assistant. "
+        "Ground your answers strictly in the official policies provided below."
+    )
+
     # Deterministic Financial Trigger Keywords
     FINANCIAL_KEYWORDS = [
         "wire transfer", "transfer funds", "payout", "disburse", "credit increase",
         "routing number", "bank account", "authorize payment", "send money",
-        "loan approval", "mortgage approval", "credit limit", "$"
+        "loan approval", "mortgage approval", "credit limit", "$",
+        "security deposit payout", "direct offline payment", "wire money outside airbnb",
+        "damage claim payout", "manual bank payout"
     ]
 
     # Prohibited Banned Lexicon
