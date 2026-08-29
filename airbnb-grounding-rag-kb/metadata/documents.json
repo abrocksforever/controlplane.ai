@@ -1,0 +1,202 @@
+[
+  {
+    "document_id": "home_cancellation_policies",
+    "title": "Cancellation policies for your home",
+    "category": "cancellation",
+    "product": "home",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/475",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "home_cancellation_guest",
+    "title": "Understanding home cancellation policies as a guest",
+    "category": "cancellation",
+    "product": "home",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/4052",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "cancel_home_guest",
+    "title": "Cancel your home reservation as a guest",
+    "category": "cancellation",
+    "product": "home",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/169",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "locate_cancellation_policy",
+    "title": "Locate a host's cancellation policy",
+    "category": "policy_lookup",
+    "product": "all",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/149",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "change_home_policy",
+    "title": "Change your home cancellation policy",
+    "category": "policy_management",
+    "product": "home",
+    "audience": "host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/3030",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "home_rebooking_refund",
+    "title": "Rebooking and refund policy for homes",
+    "category": "refund",
+    "product": "home",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2868",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "aircover_guests",
+    "title": "AirCover for guests",
+    "category": "reservation_protection",
+    "product": "home",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/3218",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "refund_delivery",
+    "title": "How you'll get your refund",
+    "category": "payments_refunds",
+    "product": "all",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/987",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "during_stay_issue",
+    "title": "Canceling during your stay / reporting reservation issues",
+    "category": "reservation_issue",
+    "product": "all",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/544",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "service_cancellation_policies",
+    "title": "Cancellation policies for service and experience listings",
+    "category": "cancellation",
+    "product": "service_experience",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/1565",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "service_guest_cancellation",
+    "title": "What guests need to know about a service or experience cancellation policy",
+    "category": "cancellation",
+    "product": "service_experience",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/1593",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "service_refund_policy",
+    "title": "Refund Policy for Services and Experiences",
+    "category": "refund",
+    "product": "service_experience",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2278",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "service_host_cancellation",
+    "title": "Host Cancellation Policy for Services and Experiences",
+    "category": "host_cancellation",
+    "product": "service_experience",
+    "audience": "host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2039",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "service_cancel_guest",
+    "title": "Cancel your service or experience reservation as a guest",
+    "category": "cancellation",
+    "product": "service_experience",
+    "audience": "guest",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2972",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "major_disruptive_events",
+    "title": "Major Disruptive Events Policy",
+    "category": "exception",
+    "product": "all",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/1320",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "weather_exclusions",
+    "title": "Weather events, natural conditions, and diseases that may be excluded",
+    "category": "exception",
+    "product": "all",
+    "audience": "guest_host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2930",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "host_cancel_valid_reason",
+    "title": "Canceling a reservation as a host without adverse consequences",
+    "category": "host_cancellation",
+    "product": "all",
+    "audience": "host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/2022",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "host_cancellation_home",
+    "title": "Host Cancellation Policy for homes",
+    "category": "host_cancellation",
+    "product": "home",
+    "audience": "host",
+    "region": "global",
+    "source_url": "https://www.airbnb.com/help/article/990",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "india_refunds",
+    "title": "Refunds in India",
+    "category": "payments_refunds",
+    "product": "all",
+    "audience": "guest",
+    "region": "India",
+    "source_url": "https://www.airbnb.com/help/article/3065",
+    "retrieved_at": "2026-08-29"
+  },
+  {
+    "document_id": "india_payments",
+    "title": "Paying for reservations in India",
+    "category": "payments",
+    "product": "home",
+    "audience": "guest",
+    "region": "India",
+    "source_url": "https://www.airbnb.com/help/article/3044",
+    "retrieved_at": "2026-08-29"
+  }
+]
