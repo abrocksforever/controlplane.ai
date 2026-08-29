@@ -28,28 +28,40 @@ Certain non-refundable hotel listings are exempt from the 24-hour free standard 
 Your standard cancellation policy applies to all reservations of 27 or fewer consecutive nights. All standard cancellation policies include a 24-hour cancellation period. This allows guests to cancel for a full refund, including taxes, for up to 24 hours after the reservation is confirmed, as long as the reservation was confirmed at least 7 days before check-in (based on the listing’s local time).
 
 Flexible
+
 Guests can cancel until 24 hours before check-in for a full refund including taxes, and you won’t be paid
 If they cancel after that, they’ll receive a refund of pro-rated taxes, and you’ll be paid for each night they stay, plus one additional night
+
 Moderate
+
 Guests can cancel until 5 days before check-in for a full refund including taxes, and you won’t be paid
 If they cancel after that, they’ll receive a refund of pro-rated taxes, and you’ll be paid for each night they stay, plus one additional night, plus 50% for all unspent nights
+
 Limited (available for reservations booked on or after October 1, 2025)
+
 Guests can cancel until 14 days before check-in for a full refund including taxes, and you won’t be paid
 If they cancel between 7 and 14 days before check-in, but after the 24-hour cancellation period, they’ll receive a 50% refund including full taxes, and you’ll be paid 50% for all nights
 If they cancel less than 7 days before check-in, they’ll receive a refund of pro-rated taxes, and you’ll be paid 100% for all nights
+
 Firm
+
 Guests can cancel until 30 days before check-in for a full refund including taxes, and you won’t be paid
 If they cancel between 7 and 30 days before check-in, but after the 24-hour cancellation period, they’ll receive a 50% refund including full taxes, and you’ll be paid 50% for all nights
 If they cancel less than 7 days before check-in, they’ll receive a refund of pro-rated taxes, and you’ll be paid 100% for all nights
 These cancellation policies are only available to certain hosts by invitation from Airbnb:
 
 Strict
+
 If guests cancel 7 or more days before check-in, but after the 24-hour cancellation period, they’ll receive a 50% refund including full taxes, and you’ll be paid 50% for all nights
 If they cancel less than 7 days before check-in, they’ll receive a refund of pro-rated taxes, and you’ll be paid 100% for all nights
+
 Super strict 30 days
+
 If guests cancel at least 30 days before check-in, but after the 24-hour cancellation period, they’ll receive a 50% refund including full taxes, and you’ll be paid 50% for all nights
 If they cancel less than 30 days before check-in, but after the 24-hour cancellation period, they’ll receive a refund of pro-rated taxes and you’ll be paid 100% for all nights
+
 Super strict 60 days
+
 If guests cancel at least 60 days before check-in, but after the 24-hour cancellation period, they’ll receive a 50% refund including full taxes, and you’ll be paid 50% for all nights
 If they cancel less than 60 days before check-in, but after the 24-hour cancellation period, they’ll receive a refund of pro-rated taxes and you’ll be paid 100% for all nights
 
@@ -58,10 +70,13 @@ If they cancel less than 60 days before check-in, but after the 24-hour cancella
 Your long-term cancellation policy applies to monthly stays, which are reservations of 28 or more consecutive nights. You can choose one of the following long-term cancellation policies:
 
 Firm
+
 To receive a full refund including taxes, guests must cancel at least 30 days before check-in
 If a guest cancels after that, they’ll receive a full refund of taxes, and you’ll be paid 100% for all nights spent, plus 30 additional nights
 If fewer than 30 nights remain on the reservation when the guest cancels, they’ll receive a pro-rated refund of taxes, and you’ll be paid 100% for all of those remaining nights
+
 Strict
+
 To receive a full refund including taxes, guests must cancel within 48 hours of booking, and the cancellation must occur at least 28 days before check-in
 If a guest cancels after that, they’ll receive a full refund of taxes, and you’ll be paid 100% for the nights already spent, plus the next 30 nights from the reservation
 If fewer than 30 nights remain on the reservation when the guest cancels, they’ll receive a pro-rated refund of taxes, and you’ll be paid 100% for all of those remaining nights
