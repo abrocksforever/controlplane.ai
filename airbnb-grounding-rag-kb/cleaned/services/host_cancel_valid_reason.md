@@ -31,6 +31,7 @@ A major disruptive event, such as declared public health emergencies or governme
 
 For service or experience hosts
 Valid cancellation reasons include, but aren’t limited to:
+
 Unexpected issues with the host’s health or venue conditions that are outside the host’s control that prevent the service or experience from taking place
 Guest-caused disruptions that prevent the host from hosting or completing a service or experience, such as failing to follow stated instructions
 If a service or experience is at an Airbnb home, and the home has an issue that prevents hosting
