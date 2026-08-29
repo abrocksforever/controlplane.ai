@@ -15,7 +15,7 @@ content_type: normalized_policy_summary
 
 Most service/experience reservations allow free cancellation until 24 hours before local start; certain reservations use 72 hours. Outside the window, refund is not automatic unless an exception applies or the host agrees. Guests can review the refund amount before finalizing. This page states eligible refunds will be received within 10 business days.
 
-#Check if you can cancel your reservation for free
+# Check if you can cancel your reservation for free
 
 Cancellation policies vary by service or experience listing. Most services and experiences on Airbnb have a 1-day cancellation policy, allowing you to cancel until 24 hours before the service or experience start time (local time zone) for a full refund. Certain services and experiences may have a 3-day (72-hour) cancellation policy.
 
@@ -23,7 +23,7 @@ If you cancel outside of the stated free cancellation period, you won’t receiv
 
 Once you start the cancellation process, you’ll be able to review any refund amount before you finalize the cancellation.
 
-#Cancel a service or experience reservation
+# Cancel a service or experience reservation
 
 Click Trips and select the reservation you want to cancel
 Under Reservation details, click Cancel reservation
