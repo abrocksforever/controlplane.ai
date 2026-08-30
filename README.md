@@ -7,12 +7,12 @@
 [![Pytest](https://img.shields.io/badge/Tests-113%2F113%20Passed%20(100%25)-059669?logo=pytest&logoColor=white)](tests/)
 [![Benchmark](https://img.shields.io/badge/Benchmark-50%2F50%20Compliant%20(100%25)-6366F1)](benchmark_airbnb.py)
 [![Fast-Path Latency](https://img.shields.io/badge/Fast--Path%20Latency-%3C%2015ms%20(P50%3A%2011.9ms)-06B6D4)](#-performance-benchmarks)
-[![Audit Log](https://img.shields.io/badge/Audit%20Log-SHA--256%20Hash%20Chained-8B5CF6)](#-stage-5-governance-hitl-triage--cryptographic-audit)
+[![Audit Log](https://img.shields.io/badge/Audit%20Log-SHA--256%20Hash%20Chained-8B5CF6)](#5-cryptographic-sha-256-hash-chained-audit-log)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B.svg)](LICENSE)
 
 **A high-performance, modular Responsible AI Control Plane featuring sub-millisecond pre-execution guardrails, parallel scatter-gather heuristics, Corrective RAG (CRAG) factual grounding, zero false-positive negation filtering, AI-as-a-Judge compliance evaluation, 3-tier policy arbitration, and immutable cryptographic SHA-256 hash-chained audit logging.**
 
-[🚀 Quick Start](#-quick-start) • [✨ Key Innovations](#-key-architectural-innovations) • [📊 Benchmark Scorecard](#-performance-benchmarks) • [🌐 Web Dashboard](#-interactive-web-dashboard) • [📚 API Reference](#-rest-api-reference) • [📁 Directory Structure](#-repository-structure)
+[🚀 Quick Start](#-quick-start) • [🌐 Web Dashboard Guide](#-interactive-web-dashboard-guide) • [✨ Key Innovations](#-key-architectural-innovations) • [📊 Benchmark Scorecard](#-performance-benchmarks) • [📚 API Reference](#-rest-api-reference) • [📁 Directory Structure](#-repository-structure)
 
 </div>
 
@@ -148,7 +148,7 @@ Standard regex and NER guardrails flag the presence of "$2,000" as an ungrounded
   - **BLOCK** ($S \ge 7.00$ or Critical Stage 1 Injection): Terminated with safe canned fallback.
 
 ### 4. Zero-Config Self-Healing SQLite Layer
-If `controlplane.db` is missing upon startup, the persistence layer (`db.py`):
+If `controlplane.db` is missing upon startup, launching the **Interactive Web Dashboard** automatically:
 1. Initializes all SQLite schema tables (`knowledge_base`, `hitl_tickets`, `feedback_store`, `interactions`).
 2. Discovers and indexes all **20 authoritative Airbnb Markdown policy documents** from `airbnb-grounding-rag-kb/cleaned/`.
 3. Warms the in-memory BM25 index in $<50\text{ms}$ with zero manual migration or configuration required.
@@ -216,77 +216,123 @@ cp .env.example .env
 # GROQ_API_KEY=gsk_your_groq_api_key_here
 ```
 
-### 3. Launch the Interactive Web Dashboard (Recommended)
+### 3. Launch the Interactive Web Dashboard
+
+Launch the application with a single command:
 
 ```bash
 python frontend/run.py
 ```
-> 🌐 Starts the FastAPI server and automatically opens `http://127.0.0.1:8000` in your default browser.
 
-### 4. Run the Live Interactive CLI
+> 🌐 **Automatic Browser Launch**: This starts the FastAPI / Uvicorn server on `http://127.0.0.1:8000`, initializes the SQLite database with all 20 authoritative policy documents, and automatically opens the interactive dashboard in your default browser.
+> 
+> *Alternatively, start via Uvicorn directly:*
+> ```bash
+> python frontend/server.py --port 8000
+> ```
 
-```bash
-python cli.py
-```
-```text
-================================================================================
-  CONTROLPLANE.AI - INTERACTIVE LIVE TERMINAL
-  Type any customer or host prompt to inspect the 5-stage pipeline live.
-  Commands:
-    'status'         - View database counts (KB docs, pending tickets, reviews)
-    'history'        - View recent conversation history across ALLOW, HITL, & BLOCK
-    'kb'             - List loaded Airbnb policy documents
-    'pending'        - View all quarantined HITL tickets
-    'verify'         - Verify SHA-256 cryptographic audit chain continuity
-    'exit'/'q'       - Quit the interactive session
-================================================================================
-
-Enter Prompt >>> What is the refund timeline for UPI payments in India?
-```
-
-### 5. Run the 6 Core Enterprise Demonstration Scenarios
+### 4. Running Benchmarks & Verification (Optional)
 
 ```bash
-python demo.py
-```
-Validates end-to-end execution across 6 primary scenario classes:
-1. **Standard Safe Inquiry** $\implies$ `ALLOW` (Fast-Path, $S = 0.00$)
-2. **Financial Trigger Gate** $\implies$ `HITL` (Forced escalation on payout request)
-3. **Guest PII Sanitization** $\implies$ In-flight masking of Credit Card & Email
-4. **Ungrounded Policy Contradiction** $\implies$ `HITL` / `BLOCK` ($R_{\text{rag}} = 7.50$)
-5. **Adversarial Prompt Injection** $\implies$ `BLOCK` (Pre-execution termination)
-6. **Governance & Audit Verification** $\implies$ 100% Cryptographic SHA-256 verification
-
-### 6. Run the 50-Case Grounding Benchmark Suite
-
-```bash
-# Deterministic offline benchmark (CI/CD friendly, ~1.5s total runtime)
+# Run the 50-case Airbnb Grounding Benchmark Suite
 python benchmark_airbnb.py
 
-# Live LLM benchmark (requires GROQ_API_KEY)
-python benchmark_airbnb.py --live
-```
-
-### 7. Run the Full Pytest Test Suite
-
-```bash
+# Run the complete Pytest test suite (113 tests)
 pytest -v
 ```
-Executes all **113 unit tests** covering Luhn validation, PII redaction, prompt injection classifiers, scatter-gather statistical scorers, BM25 retrieval, CRAG confidence, arbitration matrices, SQLite self-healing migrations, and SHA-256 hash chains.
 
 ---
 
-## 🌐 Interactive Web Dashboard
+## 🌐 Interactive Web Dashboard Guide
 
-The web interface (`frontend/`) provides an executive-ready, glassmorphic dark-theme demonstration and triage dashboard:
+The web interface (`frontend/`) is an executive-ready, glassmorphic Single-Page Application (SPA) designed for interactive step-by-step demonstration, real-time risk inspection, and human compliance operations.
 
-| Feature Tab | Capabilities |
-| :--- | :--- |
-| **🚀 Step-by-Step Inspector** | Live auto-play or manual step-through animations across all 5 inspection stages with real-time risk gauges, PII chips, CRAG confidence metrics, and waterfall latencies. |
-| **👥 HITL Review Queue** | Interactive triage interface for human compliance officers to **Allow**, **Edit**, or **Block** quarantined tickets with live feedback store metrics. |
-| **📚 Knowledge Base Explorer** | Searchable, category-filtered browser for all 20 authoritative Airbnb policy chunks with keyword highlights and metadata tags. |
-| **🔒 SHA-256 Audit Verifier** | Live cryptographic integrity verification engine providing instant audit chain continuity proofs and payload inspection. |
-| **💡 Preset Scenarios** | 1-click execution for Standard Safe Queries, PII Sanitization, Financial Triggers, RAG Contradictions, and Adversarial DAN Attacks. |
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 🛡️ ControlPlane.ai   [Live Demonstration] [HITL Queue (3)] [Knowledge Base] [Audit Log] [☀️] │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 💡 PRESET SCENARIOS:                                                                        │
+│ [ 1. Safe UPI Inquiry ]  [ 2. Financial $3.5k Payout ]  [ 3. Credit Card PII ]            │
+│ [ 4. Ungrounded Refund Trap ]  [ 5. DAN Jailbreak Attack ]  [ 6. Fabricated Guarantee ]     │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  PROMPT INPUT & CONTROLS:                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐  Execution: [ADAPTIVE ▼]      │
+│  │ What is the refund timeline for UPI payments in India?   │  [▶ Run Full Pipeline]        │
+│  └──────────────────────────────────────────────────────────┘  [⚡ Step-by-Step Mode]       │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  STEP-BY-STEP INSPECTION WATERFALL:                                                         │
+│  [● Stage 1: Guardrails] ──► [● Stage 2: CRAG] ──► [● Stage 3: Checks] ──► [● Stage 4: Arb] │
+│                                                                                             │
+│  ┌─────────────────────────┐ ┌──────────────────────────┐ ┌───────────────────────────────┐ │
+│  │ Stage 1: Pre-Guardrails │ │ Stage 2: CRAG Grounding  │ │ Stage 4: Policy Arbitration   │ │
+│  │ PII Detected: None      │ │ Retrieval: ρ = 1.00 (High│ │ Decision: [ ALLOW ]            │ │
+│  │ Injection Risk: 0.0/10  │ │ Top Doc: KB-AIRBNB-004   │ │ Composite Risk Score: 0.00/10 │ │
+│  │ Latency: 0.15ms         │ │ Latency: 6.80ms          │ │ Latency: 0.05ms               │ │
+│  └─────────────────────────┘ └──────────────────────────┘ └───────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Live Demonstration & Stepper Mode (`/static/index.html`)
+
+- **Interactive Stepper vs Full Run**:
+  - **Full Run**: Click **"Run Full Pipeline"** for immediate end-to-end evaluation with real-time waterfall timing.
+  - **Step-by-Step Walkthrough**: Toggle **"Step-by-Step Mode"** to pause at each stage. Use **"Next Step ▶"** or **"Auto Play ⏯️"** to observe stage-by-stage transformations (sanitization $\to$ retrieval $\to$ parallel scoring $\to$ arbitration $\to$ audit signing).
+- **Execution Mode Selector**:
+  - **ADAPTIVE (Default)**: Automatically routes clean queries to Fast-Path ($<15\text{ms}$) and auto-promotes to Deep-Path on ambiguity or risk triggers.
+  - **FAST**: Bypasses secondary LLM judging for maximum throughput.
+  - **DEEP**: Forces full Semantic NLI and secondary AI-as-a-Judge inspection.
+- **Stage-by-Stage Inspector Cards**:
+  - **Stage 1 (Pre-Guardrails)**: Displays raw prompt, reverse-offset sanitized prompt, detected PII chips (SSN, Cards, Email), and weighted prompt injection gauge.
+  - **Stage 2 (Context & CRAG)**: Displays BM25 retrieved policy chunks, token overlap ratio, CRAG quality score $\rho$, and candidate response draft.
+  - **Stage 3A (Fast Checks)**: Displays output PII scanner results, banned lexicon hits, Shannon entropy score, and degenerate repetition metrics.
+  - **Stage 3B (Factual Grounding)**: Displays extracted numeric/temporal entities, 60-character sliding negation-window matches (exempting denials), and final Grounding Score $G$.
+  - **Stage 3C (AI-as-a-Judge)**: Displays bias, tone, and policy adherence scores with structured reasoning from the compliance judge LLM.
+  - **Stage 4 (Arbitration)**: Shows active weight breakdown, financial trigger flag, composite score gauge, and the 3-tier routing verdict (`ALLOW`, `HITL`, `BLOCK`).
+  - **Stage 5 (Audit & Delivery)**: Displays the delivered text payload, total end-to-end latency, waterfall breakdown, and cryptographic SHA-256 hash stamp.
+
+### 2. One-Click Demonstration Scenario Presets
+
+The dashboard includes **6 built-in enterprise presets** that populate prompts and demonstrate distinct pipeline capabilities with a single click:
+
+| Preset Scenario | Category | Expected Verdict | What It Demonstrates |
+| :--- | :--- | :---: | :--- |
+| **1. Standard Safe Query** | Routine Inquiry | `ALLOW` ($S = 0.00$) | High CRAG confidence ($\rho = 1.0$), fast-path deflection in $<15\text{ms}$. |
+| **2. Financial Payout Trigger** | Financial Risk | `HITL` (Forced) | `FinCheck` detects $3,500 security deposit payout and routes directly to HITL queue. |
+| **3. Guest PII Sanitization** | Data Privacy | In-Flight Redaction | Credit card (Luhn-validated) and email masked pre-execution; safe processing. |
+| **4. Ungrounded Refund Trap** | Hallucination | `HITL` / `BLOCK` | User asks for a non-existent $2,000 refund; negation filter refutes invalid claim. |
+| **5. Adversarial DAN Attack** | Jailbreak | `BLOCK` (Stage 1) | Prompt injection classifier detects "developer mode" override; early termination in $<1\text{ms}$. |
+| **6. Fabricated Guarantee** | Policy Mismatch | `HITL` ($R_{\text{rag}} = 7.50$) | RAG verifier catches unindexed empirical guarantee; active abstention triggered. |
+
+### 3. Human-in-the-Loop (HITL) Triage Queue
+
+Navigate to the **HITL Queue** tab to access the live compliance review interface:
+- **Pending Ticket Roster**: Lists quarantined tickets with timestamp, requesting user, composite score, and trigger reason.
+- **Reviewer Action Modal**:
+  - **ALLOW**: Approve and release the original candidate response unchanged.
+  - **EDIT**: Open a live text editor to sanitize or correct the candidate response and deliver the human-approved text.
+  - **BLOCK**: Override and deliver the safe canned fallback response.
+  - **Reviewer Notes**: Record compliance rationale stored into SQLite for active learning.
+- **Active Learning Continuous Feedback Metrics**:
+  - Displays real-time charts: Total Reviewed, Approval Rate (%), Edit Rate (%), and Block Rate (%).
+  - Provides dynamic threshold calibration feedback based on reviewer behavior.
+
+### 4. Authoritative Knowledge Base Explorer
+
+Navigate to the **Knowledge Base** tab to explore the underlying grounding corpus:
+- **Interactive Search**: Real-time client-side search across all 20 Markdown policy documents.
+- **Category Filtering**: Filter by *Refunds & Cancellations*, *Major Disruptive Events*, *Host Damage Protection*, *Safety & Security*, and *Payment Terms*.
+- **Document Detail View**: Inspect full document text, extracted keyword tokens, and metadata tags used by the BM25 retrieval engine.
+
+### 5. Cryptographic SHA-256 Audit Log Verifier
+
+Navigate to the **SHA-256 Audit Log** tab to inspect the tamper-proof ledger:
+- **Ledger Explorer**: Scroll through chronological audit entries showing Entry ID, Timestamp, Prompt Hash, Decision, Score, and Hash ($H_i$).
+- **One-Click Verification**: Click **"Verify Audit Log Integrity"** to execute a live cryptographic check that re-hashes every entry from genesis to the latest record, confirming continuous unbroken SHA-256 chaining.
+- **Payload Inspection**: Click any entry to view its complete JSON telemetry payload.
+
+### 6. Theme Customization
+
+- Switch between **Dark Mode** (glassmorphic cyber-navy) and **Bright Mode** (crisp modern enterprise white) using the sun/moon toggle in the top header.
 
 ---
 
@@ -395,11 +441,8 @@ ControlPlane.ai/
 ├── arbitrator.py                  # Stage 4: Policy Arbitration Matrix & Score Engine
 ├── audit_hitl.py                  # Stage 5: Cryptographic SHA-256 Audit & HITL Queue
 ├── db.py                          # SQLite Persistence Layer & Zero-Config Auto-Seeder
-│
-├── cli.py                         # Interactive Live Terminal Interface
-├── demo.py                        # 6 Core Enterprise Scenario Benchmark Runner
-├── benchmark_airbnb.py            # Official 50-Question Airbnb Compliance Benchmark
 ├── logging_config.py              # Structured JSON Logging & ContextVar Trace IDs
+├── benchmark_airbnb.py            # Official 50-Question Airbnb Compliance Benchmark
 │
 ├── airbnb-grounding-rag-kb/       # Authoritative Airbnb Knowledge Base Corpus
 │   ├── cleaned/                   # 20 Authoritative Markdown Policy Documents
