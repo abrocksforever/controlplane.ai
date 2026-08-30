@@ -18,7 +18,9 @@ from typing import List, Tuple, Dict, Any, Set, Optional
 from models import (
     Stage3BResult,
     KnowledgeChunk,
-    VerificationStatus
+    VerificationStatus,
+    CRAGStatus,
+    Config
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,8 @@ STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "he",
     "in", "is", "it", "its", "of", "on", "that", "the", "to", "was", "were",
     "will", "with", "you", "your", "can", "our", "all", "any", "how", "what",
-    "when", "where", "which", "who", "why", "does", "have", "this", "or", "but"
+    "when", "where", "which", "who", "why", "does", "have", "this", "or", "but",
+    "get", "got", "do", "did", "if", "my", "me", "i", "we", "us", "they", "them", "some"
 }
 
 # Regex Gate 1: Comprehensive numeric, currency, percentage, and timeframe constraints
@@ -40,6 +43,14 @@ NUMERIC_ENTITY_PATTERN = re.compile(
 # Regex Gate 2: Policy Commitment & Action Verbs
 POLICY_ACTION_PATTERN = re.compile(
     r"\b(refund|refunds|cancel|cancelled|cancelling|cancellation|reimburse|reimbursement|payout|payouts|disburse|disbursement|guarantee|guarantees|eligible|eligibility|fee waiver|penalty|aircover|deposit|coverage)\b",
+    re.IGNORECASE
+)
+
+# Regex Gate 3: Negation and Refutation Context Patterns
+NEGATION_CONTEXT_PATTERN = re.compile(
+    r"\b(cannot|can't|not\s+(?:eligible|entitled|refundable|subject|permitted|possible)|"
+    r"does\s+not\s+(?:qualify|apply|cover|provide|allow)|won't\s+be\s+refunded|"
+    r"no\s+(?:\w+\s+)?refund|ineligible|non-refundable|neither|without|is\s+not\s+covered)\b",
     re.IGNORECASE
 )
 
@@ -61,21 +72,18 @@ def evaluate_factual_assertions(text: str) -> bool:
 
 
 # ============================================================================
-# 1. Canonical BM25 Retriever (RetEngine)
+# 1. Canonical BM25 Retriever & CRAG Confidence Evaluator (RetEngine)
 # ============================================================================
 
-def retrieve_knowledge_chunks(
+def retrieve_knowledge_chunks_scored(
     query_text: str,
     top_k: int = 3,
     kb: Optional[List[KnowledgeChunk]] = None,
     product_filter: Optional[str] = None,
     region_filter: Optional[str] = None
-) -> List[KnowledgeChunk]:
+) -> List[Tuple[float, KnowledgeChunk]]:
     """
-    Canonical BM25 Knowledge Base Retriever (RetEngine).
-    
-    Uses standard BM25 with token-boundary matching, inverse document frequency (IDF),
-    document length normalization, and metadata product/region boosts.
+    Canonical BM25 Knowledge Base Retriever (RetEngine) returning ranked (score, chunk) tuples.
     """
     if kb is None:
         try:
@@ -107,7 +115,6 @@ def retrieve_knowledge_chunks(
     scored: List[Tuple[float, KnowledgeChunk]] = []
 
     for idx, chunk in enumerate(kb):
-        # Optional metadata filtering
         if product_filter and chunk.product and chunk.product not in (product_filter, "all"):
             continue
         if region_filter and chunk.region and chunk.region not in (region_filter, "global"):
@@ -149,7 +156,63 @@ def retrieve_knowledge_chunks(
             scored.append((score, chunk))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [c for _, c in scored[:top_k]]
+    return scored[:top_k]
+
+
+def retrieve_knowledge_chunks(
+    query_text: str,
+    top_k: int = 3,
+    kb: Optional[List[KnowledgeChunk]] = None,
+    product_filter: Optional[str] = None,
+    region_filter: Optional[str] = None
+) -> List[KnowledgeChunk]:
+    """Retrieves top-k authoritative knowledge chunks via BM25."""
+    scored = retrieve_knowledge_chunks_scored(
+        query_text=query_text,
+        top_k=top_k,
+        kb=kb,
+        product_filter=product_filter,
+        region_filter=region_filter
+    )
+    return [c for _, c in scored]
+
+
+def evaluate_crag_retrieval_confidence(
+    query_text: str,
+    retrieved_chunks: List[KnowledgeChunk],
+    scored_list: Optional[List[Tuple[float, KnowledgeChunk]]] = None
+) -> Tuple[float, CRAGStatus]:
+    """
+    Corrective RAG (CRAG) Retrieval Quality Evaluator.
+    
+    Computes a normalized confidence metric rho in [0.0, 1.0] from:
+    1. Top BM25 score magnitude (normalized against benchmark ceiling).
+    2. Query keyword token coverage across retrieved document titles and content.
+    """
+    if not retrieved_chunks:
+        return 0.0, CRAGStatus.KNOWLEDGE_GAP_ABSTAIN
+
+    top_score = scored_list[0][0] if (scored_list and len(scored_list) > 0) else 1.0
+    norm_score = min(1.0, max(0.0, top_score / 6.0))
+
+    q_tokens = set(_tokenize(query_text))
+    if not q_tokens:
+        coverage = 1.0
+    else:
+        top_doc_tokens = set(_tokenize(retrieved_chunks[0].title + " " + retrieved_chunks[0].content))
+        overlap = len(q_tokens.intersection(top_doc_tokens))
+        coverage = min(1.0, overlap / len(q_tokens))
+
+    rho = round(0.30 * norm_score + 0.70 * coverage, 2)
+
+    if rho >= Config.CRAG_HIGH_CONFIDENCE_THRESHOLD:
+        status = CRAGStatus.HIGH_CONFIDENCE
+    elif rho >= Config.CRAG_ABSTENTION_THRESHOLD:
+        status = CRAGStatus.AMBIGUOUS
+    else:
+        status = CRAGStatus.KNOWLEDGE_GAP_ABSTAIN
+
+    return rho, status
 
 
 # ============================================================================
@@ -165,6 +228,24 @@ def _extract_numeric_entities(text: str) -> List[str]:
         if token:
             cleaned.append(token)
     return cleaned
+
+
+def _is_number_in_negation_clause(num_str: str, text: str) -> bool:
+    """
+    Checks if a numeric entity is inside a negation/denial clause (e.g. 'does not qualify for $2,000').
+    Prevents false-positive penalties when the bot refutes ungrounded user numbers.
+    """
+    num_escaped = re.escape(num_str)
+    for m in re.finditer(num_escaped, text, re.IGNORECASE):
+        start_idx = max(0, m.start() - 60)
+        preceding = text[start_idx:m.start()]
+        # Check sentence window
+        sent_start = max(0, text.rfind(".", 0, m.start()) + 1)
+        sent_end = min(len(text), m.end() + 40)
+        sent_window = text[sent_start:sent_end]
+        if NEGATION_CONTEXT_PATTERN.search(preceding) or NEGATION_CONTEXT_PATTERN.search(sent_window):
+            return True
+    return False
 
 
 def _normalize_token(val: str) -> str:
@@ -219,45 +300,58 @@ def verify_factual_grounding(
     use_nli: bool = True
 ) -> Stage3BResult:
     """
-    Factual Grounding Verifier (Stage 3B)
+    Factual Grounding Verifier (Stage 3B) with Corrective RAG & Negation Awareness.
     
-    Verifies candidate response against authoritative policy chunks:
-    1. Standalone assertion detection when 0 docs retrieved (eliminates free pass).
-    2. Strict numeric/currency/timeframe entity verification.
-    3. Sentence-level NLI entailment with disclaimer/refusal immunity.
-    4. Computes Grounding Score G (0-10), Verification Confidence (0.0-1.0), and VerificationStatus.
+    1. Evaluates CRAG retrieval confidence rho in [0.0, 1.0].
+    2. Active Abstention when rho < 0.40 on empirical policy claims.
+    3. Negation-aware numeric entity validation.
+    4. Sentence-level NLI entailment with disclaimer immunity.
     """
-    # 1. Retrieve relevant policy chunks for the query/candidate
+    # 1. Retrieve relevant policy chunks and evaluate query CRAG confidence
+    query_target = query.strip() if query.strip() else candidate_response.strip()
+    query_scored_chunks = retrieve_knowledge_chunks_scored(query_target, top_k=3, kb=knowledge_base)
+
     search_text = f"{query} {candidate_response}".strip()
-    retrieved_chunks = retrieve_knowledge_chunks(search_text, top_k=3, kb=knowledge_base)
+    scored_chunks = retrieve_knowledge_chunks_scored(search_text, top_k=3, kb=knowledge_base)
+    retrieved_chunks = [c for _, c in scored_chunks] if scored_chunks else [c for _, c in query_scored_chunks]
     
-    # 2. Case: Zero Knowledge Base Documents Matched
-    if not retrieved_chunks:
+    crag_confidence, crag_status = evaluate_crag_retrieval_confidence(
+        query_text=query_target,
+        retrieved_chunks=retrieved_chunks,
+        scored_list=query_scored_chunks
+    )
+
+    # 2. Case: Zero Knowledge Base Documents or CRAG Knowledge Gap (rho < 0.40)
+    if crag_status == CRAGStatus.KNOWLEDGE_GAP_ABSTAIN or not retrieved_chunks:
         has_claims = evaluate_factual_assertions(candidate_response) or evaluate_factual_assertions(query)
         if has_claims:
-            # Unverified empirical or policy claims made with zero matching evidence
+            # Active Abstention: Unverified empirical or policy claims made with weak/no grounding
             return Stage3BResult(
-                retrieved_chunks=[],
-                grounding_score=3.0,
-                unsupported_claims=["Unverified domain policy assertion with no supporting knowledge base evidence."],
+                retrieved_chunks=retrieved_chunks,
+                grounding_score=2.50,
+                unsupported_claims=["CRAG Abstention: Policy assertion made with insufficient retrieval grounding."],
                 numeric_mismatches=[],
-                rag_risk=7.0,
+                rag_risk=7.50,
                 verification_confidence=0.0,
-                verification_status=VerificationStatus.UNVERIFIED_ASSERTION
+                verification_status=VerificationStatus.UNVERIFIED_ASSERTION,
+                crag_confidence=crag_confidence,
+                crag_status=CRAGStatus.KNOWLEDGE_GAP_ABSTAIN
             )
         else:
             # Benign conversation / pleasantry (e.g. "Hello, how can I help?")
             return Stage3BResult(
-                retrieved_chunks=[],
+                retrieved_chunks=retrieved_chunks,
                 grounding_score=10.0,
                 unsupported_claims=[],
                 numeric_mismatches=[],
                 rag_risk=0.0,
                 verification_confidence=1.0,
-                verification_status=VerificationStatus.GENERAL_CONVERSATION
+                verification_status=VerificationStatus.GENERAL_CONVERSATION,
+                crag_confidence=1.0,
+                crag_status=CRAGStatus.HIGH_CONFIDENCE
             )
 
-    # 3. Case: Documents Matched — Run Comprehensive Factual Verification
+    # 3. Case: Sufficient Grounding (rho >= 0.40) — Run Dual-Gate Verification
     combined_source_text = "\n\n".join([f"[{c.title}]: {c.content}" for c in retrieved_chunks])
     combined_source_lower = combined_source_text.lower()
     
@@ -280,7 +374,7 @@ def verify_factual_grounding(
         unsupported_claims.append("False universal guarantee contradicts conditional policy terms.")
         penalty += 5.5
 
-    # Gate B: Numeric, Currency, & Timeframe Grounding
+    # Gate B: Negation-Aware Numeric, Currency, & Timeframe Grounding
     candidate_numbers = _extract_numeric_entities(candidate_response)
     source_numbers = set([_normalize_token(n) for n in _extract_numeric_entities(combined_source_text)])
 
@@ -288,10 +382,14 @@ def verify_factual_grounding(
         norm_num = _normalize_token(num)
         # Check exact token match or substring match in source
         if norm_num not in source_numbers and norm_num not in combined_source_lower:
+            # Check if this number is in a denial/negation clause (e.g. 'does not qualify for $2,000')
+            if _is_number_in_negation_clause(num, candidate_response):
+                logger.debug(f"Numeric claim '{num}' ignored due to negation/refutation context.")
+                continue
             numeric_mismatches.append(f"Unverified numeric claim '{num}' not found in source policy.")
             penalty += 3.5
 
-    # Gate B: Sentence-Level Fact Consistency (NLI Entailment)
+    # Gate C: Sentence-Level Fact Consistency (NLI Entailment)
     sentences = [s.strip() for s in re.split(r"[.!?]", candidate_response) if len(s.strip()) > 15]
     source_tokens = set(re.findall(r"\b\w+\b", combined_source_lower))
     
@@ -346,5 +444,7 @@ def verify_factual_grounding(
         numeric_mismatches=numeric_mismatches,
         rag_risk=rag_risk,
         verification_confidence=confidence,
-        verification_status=status
+        verification_status=status,
+        crag_confidence=crag_confidence,
+        crag_status=crag_status
     )

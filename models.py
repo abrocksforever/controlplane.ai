@@ -39,8 +39,22 @@ class VerificationStatus(str, Enum):
     VERIFIED_GROUNDED = "VERIFIED_GROUNDED"        # Docs matched, claims entailed (G >= 7.0)
     PARTIALLY_GROUNDED = "PARTIALLY_GROUNDED"      # Docs matched, minor gaps (3.0 <= G < 7.0)
     CONTRADICTED = "CONTRADICTED"                  # Docs matched, factual conflict (G < 3.0)
-    UNVERIFIED_ASSERTION = "UNVERIFIED_ASSERTION"  # 0 docs matched, but factual claims made
+    UNVERIFIED_ASSERTION = "UNVERIFIED_ASSERTION"  # 0 docs matched or weak grounding, factual claims made
     GENERAL_CONVERSATION = "GENERAL_CONVERSATION"  # 0 docs matched, no claims (greetings/thanks)
+
+
+class ExecutionMode(str, Enum):
+    """Tiered Latency & Governance Execution Modes."""
+    FAST = "FAST"          # Local Heuristics + BM25 + Regex (<25ms)
+    DEEP = "DEEP"          # Full NLI Entailment + AI-as-a-Judge (<2000ms)
+    ADAPTIVE = "ADAPTIVE"  # Dynamically promotes to DEEP on ambiguity / risk triggers
+
+
+class CRAGStatus(str, Enum):
+    """Corrective RAG (CRAG) Retrieval Quality & Grounding Status."""
+    HIGH_CONFIDENCE = "HIGH_CONFIDENCE"          # Strong BM25 density (ρ >= 0.70)
+    AMBIGUOUS = "AMBIGUOUS"                      # Moderate density (0.40 <= ρ < 0.70)
+    KNOWLEDGE_GAP_ABSTAIN = "KNOWLEDGE_GAP_ABSTAIN"  # Insufficient grounding (ρ < 0.40) -> Abstain
 
 
 # ============================================================================
@@ -107,6 +121,8 @@ class Stage3BResult(BaseModel):
     rag_risk: float = 0.0          # Computed as (10.0 - grounding_score)
     verification_confidence: float = 1.0  # Mathematical confidence in [0.0, 1.0]
     verification_status: VerificationStatus = VerificationStatus.VERIFIED_GROUNDED
+    crag_confidence: float = 1.0   # Retrieval confidence ρ in [0.0, 1.0]
+    crag_status: CRAGStatus = CRAGStatus.HIGH_CONFIDENCE
 
 
 # ============================================================================
@@ -187,6 +203,8 @@ class PipelineOutput(BaseModel):
     ticket_id: Optional[str] = None
     telemetry: Dict[str, Any] = Field(default_factory=dict)
     audit_hash: str = ""
+    execution_mode: ExecutionMode = ExecutionMode.ADAPTIVE
+    active_path: str = "FAST"
 
 
 # ============================================================================
@@ -214,6 +232,10 @@ class Config:
     WEIGHT_STATISTICAL: float = float(os.environ.get("CONTROLPLANE_WEIGHT_STATISTICAL", "0.15"))
     WEIGHT_RAG_GROUNDING: float = float(os.environ.get("CONTROLPLANE_WEIGHT_RAG_GROUNDING", "0.35"))
     WEIGHT_AI_JUDGE: float = float(os.environ.get("CONTROLPLANE_WEIGHT_AI_JUDGE", "0.25"))
+
+    # CRAG Retrieval Quality Thresholds
+    CRAG_ABSTENTION_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_CRAG_ABSTAIN_THRESHOLD", "0.40"))
+    CRAG_HIGH_CONFIDENCE_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_CRAG_HIGH_THRESHOLD", "0.70"))
 
     # Safe Canned Fallback Response (for BLOCK)
     SAFE_FALLBACK: str = os.environ.get(

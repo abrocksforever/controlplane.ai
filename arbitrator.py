@@ -84,17 +84,33 @@ def calculate_composite_score(
     r_rag = stage3b_res.rag_risk if stage3b_res else 0.0
     r_judge = stage3c_res.judge_risk_score if stage3c_res else 0.0
 
-    # 3. Weighted Linear Combination
+    # 3. Dynamic Active Weight Renormalization
+    # When Stage 3C is skipped (Fast-Path), renormalize weights over active dimensions
+    if stage3c_res is None:
+        active_sum = Config.WEIGHT_HEURISTIC + Config.WEIGHT_STATISTICAL + Config.WEIGHT_RAG_GROUNDING
+        w_heur = Config.WEIGHT_HEURISTIC / active_sum
+        w_stat = Config.WEIGHT_STATISTICAL / active_sum
+        w_rag = Config.WEIGHT_RAG_GROUNDING / active_sum
+        w_judge = 0.0
+    else:
+        w_heur = Config.WEIGHT_HEURISTIC
+        w_stat = Config.WEIGHT_STATISTICAL
+        w_rag = Config.WEIGHT_RAG_GROUNDING
+        w_judge = Config.WEIGHT_AI_JUDGE
+
     composite = (
-        Config.WEIGHT_HEURISTIC * r_heuristic +
-        Config.WEIGHT_STATISTICAL * r_stat +
-        Config.WEIGHT_RAG_GROUNDING * r_rag +
-        Config.WEIGHT_AI_JUDGE * r_judge
+        w_heur * r_heuristic +
+        w_stat * r_stat +
+        w_rag * r_rag +
+        w_judge * r_judge
     )
 
-    # If unverified domain assertion with 0 matching docs, floor risk in HITL range
-    if stage3b_res and getattr(stage3b_res, "verification_status", None) == "UNVERIFIED_ASSERTION":
-        composite = max(composite, 3.0)
+    # If unverified domain assertion or CRAG knowledge gap abstention, floor risk in HITL range (S >= 3.0)
+    if stage3b_res:
+        status_val = str(getattr(stage3b_res, "verification_status", ""))
+        crag_val = str(getattr(stage3b_res, "crag_status", ""))
+        if "UNVERIFIED_ASSERTION" in status_val or "KNOWLEDGE_GAP_ABSTAIN" in crag_val:
+            composite = max(composite, 3.0)
 
     # If heuristic leak or AI judge violation is critical (>= 9.0), elevate composite risk
     max_critical_risk = max(r_heuristic, r_judge)

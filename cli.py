@@ -10,7 +10,7 @@ import os
 import sys
 from pipeline import run_controlplane
 from audit_hitl import hitl_queue_manager, verify_audit_log_integrity
-from models import DecisionTier, HITLAction
+from models import DecisionTier, HITLAction, ExecutionMode
 import db
 
 
@@ -23,12 +23,12 @@ def print_banner():
     print("  CONTROLPLANE.AI - INTERACTIVE LIVE TERMINAL")
     print("  Type any customer or host prompt to inspect the 5-stage pipeline live.")
     print("  Commands:")
-    print("    'status'  - View database counts (KB docs, pending tickets, reviews)")
-    print("    'history' - View recent conversation history across ALLOW, HITL, & BLOCK")
-    print("    'kb'      - List loaded Airbnb policy documents")
-    print("    'pending' - View all quarantined HITL tickets")
-    print("    'verify'  - Verify SHA-256 cryptographic audit chain continuity")
-    print("    'exit'/'q'- Quit the interactive session")
+    print("    'status'         - View database counts (KB docs, pending tickets, reviews)")
+    print("    'history'        - View recent conversation history across ALLOW, HITL, & BLOCK")
+    print("    'kb'             - List loaded Airbnb policy documents")
+    print("    'pending'        - View all quarantined HITL tickets")
+    print("    'verify'         - Verify SHA-256 cryptographic audit chain continuity")
+    print("    'exit'/'q'       - Quit the interactive session")
     print("=" * 80 + "\n")
 
 
@@ -157,6 +157,7 @@ def run_interactive_session():
         print(f"\n[STAGE 3B: RAG Grounding Verification] ({telemetry.get('waterfall_latency_ms', {}).get('stage3b_rag_grounding_ms', 0):.2f} ms)")
         docs = [d.get("doc_id") for d in s3b.get("retrieved_chunks", [])]
         print(f"  - Retrieved Policy Chunks: {docs or 'None (General Inquiry)'}")
+        print(f"  - CRAG Status: {s3b.get('crag_status', 'N/A')} | Retrieval Confidence (ρ): {s3b.get('crag_confidence', 1.0):.2f}")
         print(f"  - Grounding Score: {s3b.get('grounding_score', 10):.2f}/10 (RAG Risk: {s3b.get('rag_risk', 0):.2f}/10)")
         print(f"  - Verification Status: {s3b.get('verification_status', 'N/A')} | Confidence: {s3b.get('verification_confidence', 1.0):.2f}")
         if s3b.get("numeric_mismatches"):

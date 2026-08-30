@@ -17,18 +17,23 @@ import logging
 from typing import Dict, Any, Optional
 
 from models import (
-    PromptRequest,
     PipelineOutput,
     DecisionTier,
     HITLAction,
+    ExecutionMode,
+    CRAGStatus,
     Config
 )
-from llm_client import call_llm
 from pii import filter_input_pii_and_injection
+from llm_client import call_llm
 from fast_checks import run_stage3a_fast_checks
-from rag_verifier import verify_factual_grounding
+from rag_verifier import (
+    verify_factual_grounding,
+    retrieve_knowledge_chunks_scored,
+    evaluate_crag_retrieval_confidence
+)
 from ai_judge import run_ai_judge
-from arbitrator import arbitrate_decision, route_output
+from arbitrator import arbitrate_decision, route_output, check_financial_trigger
 from audit_hitl import log_audit_entry, hitl_queue_manager
 from logging_config import set_trace_id, clear_trace_id
 
@@ -42,12 +47,12 @@ def run_controlplane(
     log_path: str = "audit_log.jsonl"
 ) -> PipelineOutput:
     """
-    Executes the end-to-end ControlPlane.ai inspection pipeline.
+    Executes the end-to-end ControlPlane.ai inspection pipeline with Adaptive Latency Routing.
 
     Args:
         prompt: Raw user input text.
         user_id: Identifier of the requesting client or user.
-        auto_hitl_action: Optional simulated human action (APPROVE | EDIT | OVERRIDE) for demo resolution.
+        auto_hitl_action: Optional simulated human action (APPROVE | EDIT | OVERRIDE).
         log_path: Path to the immutable SHA-256 audit log file.
 
     Returns:
@@ -56,10 +61,10 @@ def run_controlplane(
     t_start = time.perf_counter()
     waterfall: Dict[str, float] = {}
     trace_id = set_trace_id()
-    logger.info(f"Pipeline started for user '{user_id}'", extra={"stage": "init", "component": "pipeline"})
+    logger.info(f"Pipeline started for user '{user_id}' [Adaptive Mode]", extra={"stage": "init", "component": "pipeline"})
 
     # ========================================================================
-    # STAGE 1: Pre-Execution Guardrails (Input PII & Injection Filter)
+    # STAGE 1: Pre-Execution Guardrails (Input PII & Injection Filter <1ms)
     # ========================================================================
     t0 = time.perf_counter()
     stage1_res = filter_input_pii_and_injection(prompt)
@@ -75,6 +80,8 @@ def run_controlplane(
         total_time_ms = round((time.perf_counter() - t_start) * 1000, 2)
         telemetry = {
             "user_id": user_id,
+            "routing_mode": "ADAPTIVE",
+            "active_path": "FAST",
             "total_latency_ms": total_time_ms,
             "waterfall_latency_ms": waterfall,
             "stage1_pre_guardrails": stage1_res.model_dump(),
@@ -104,17 +111,25 @@ def run_controlplane(
             composite_score=arbitration.composite_score,
             is_financial_trigger=arbitration.is_financial_trigger,
             telemetry=telemetry,
-            audit_hash=audit_entry.entry_hash
+            audit_hash=audit_entry.entry_hash,
+            execution_mode=ExecutionMode.ADAPTIVE,
+            active_path="FAST"
         )
 
     # ========================================================================
-    # STAGE 2: Primary LLM Generation (PrimLLM on Sanitized Prompt)
+    # STAGE 2: Primary LLM Generation (BM25 Context Retrieval + CRAG Eval)
     # ========================================================================
     t0 = time.perf_counter()
-    # Retrieve enterprise policy context if applicable
-    from rag_verifier import retrieve_knowledge_chunks
-    kb_chunks = retrieve_knowledge_chunks(stage1_res.sanitized_prompt, top_k=3)
-    if kb_chunks:
+    scored_chunks = retrieve_knowledge_chunks_scored(stage1_res.sanitized_prompt, top_k=3)
+    kb_chunks = [c for _, c in scored_chunks]
+    
+    crag_conf, crag_status = evaluate_crag_retrieval_confidence(
+        query_text=stage1_res.sanitized_prompt,
+        retrieved_chunks=kb_chunks,
+        scored_list=scored_chunks
+    )
+
+    if kb_chunks and crag_status != CRAGStatus.KNOWLEDGE_GAP_ABSTAIN:
         policy_context = "\n\n".join(f"[{c.title}]: {c.content}" for c in kb_chunks)
         system_instruction = (
             f"{Config.SYSTEM_PERSONA}\n\n"
@@ -144,17 +159,45 @@ def run_controlplane(
     waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
     # ========================================================================
+    # ADAPTIVE LATENCY ROUTER: Fast-Path vs Deep-Path Elevation
+    # ========================================================================
+    is_fin_trigger, _ = check_financial_trigger(prompt, candidate_response)
+
+    # Dynamically elevate to Deep-Path if triggers or ambiguity detected
+    needs_deep = (
+        is_fin_trigger or
+        crag_status != CRAGStatus.HIGH_CONFIDENCE or
+        stage3a_res.heuristic_risk > 2.0 or
+        stage3a_res.stat_risk > 2.0
+    )
+    if needs_deep:
+        active_path = "DEEP"
+        use_nli = True
+        run_judge = True
+    else:
+        active_path = "FAST"
+        use_nli = False
+        run_judge = False
+
+    # ========================================================================
     # STAGE 3B: RAG Grounding Verification (RetEngine + RAGVerifier)
     # ========================================================================
     t0 = time.perf_counter()
-    stage3b_res = verify_factual_grounding(candidate_response, query=prompt)
+    stage3b_res = verify_factual_grounding(
+        candidate_response=candidate_response,
+        query=prompt,
+        use_nli=use_nli
+    )
     waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
     # ========================================================================
-    # STAGE 3C: AI-as-a-Judge Sequential Evaluation (AIJudge)
+    # STAGE 3C: AI-as-a-Judge Evaluation (Executed on DEEP path)
     # ========================================================================
     t0 = time.perf_counter()
-    stage3c_res = run_ai_judge(prompt, candidate_response, stage3a_res, stage3b_res)
+    if run_judge:
+        stage3c_res = run_ai_judge(prompt, candidate_response, stage3a_res, stage3b_res)
+    else:
+        stage3c_res = None
     waterfall["stage3c_ai_judge_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
     # ========================================================================
@@ -201,13 +244,15 @@ def run_controlplane(
     # Assemble comprehensive telemetry trace
     telemetry = {
         "user_id": user_id,
+        "routing_mode": "ADAPTIVE",
+        "active_path": active_path,
         "total_latency_ms": total_time_ms,
         "waterfall_latency_ms": waterfall,
         "stage1_pre_guardrails": stage1_res.model_dump(),
         "candidate_response": candidate_response,
         "stage3a_fast_checks": stage3a_res.model_dump(),
         "stage3b_rag_grounding": stage3b_res.model_dump(),
-        "stage3c_ai_judge": stage3c_res.model_dump(),
+        "stage3c_ai_judge": stage3c_res.model_dump() if stage3c_res else {},
         "stage4_arbitration": arbitration.model_dump(),
         "quarantined_ticket_id": quarantined_ticket_id
     }
@@ -237,5 +282,7 @@ def run_controlplane(
         is_financial_trigger=arbitration.is_financial_trigger,
         ticket_id=quarantined_ticket_id,
         telemetry=telemetry,
-        audit_hash=audit_entry.entry_hash
+        audit_hash=audit_entry.entry_hash,
+        execution_mode=ExecutionMode.ADAPTIVE,
+        active_path=active_path
     )
