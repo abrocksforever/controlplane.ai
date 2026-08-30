@@ -43,6 +43,7 @@ def format_decision(decision: DecisionTier) -> str:
 
 
 def run_interactive_session():
+    db.init_db()
     print_banner()
 
     while True:

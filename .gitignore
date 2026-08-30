@@ -1,33 +1,51 @@
-# Python cache & build files
+# Python Bytecode & Cache
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
 
-# Environment variables & secrets
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables & Secrets
 .env
 .env.*
 *.env
+!.env.example
 
-# Runtime audit log files & SQLite databases (auto-generated)
-*.jsonl
-demo_audit_log.jsonl
-audit_log.jsonl
-test_audit.jsonl
+# Runtime SQLite Databases & Audit Logs (Auto-Generated on first run)
 *.db
 *.sqlite
 *.sqlite3
 controlplane.db
 test_*.db
+*.jsonl
+audit_log.jsonl
+benchmark_audit.jsonl
+demo_audit_log.jsonl
+test_audit.jsonl
 
-# IDE & Editor configs
+# IDE & Editor Configurations
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS files
+# OS Generated Files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
