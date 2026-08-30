@@ -1,0 +1,260 @@
+/* ControlPlane.ai Bright & Dark Multi-Theme Stylesheet */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ==========================================================================
+   1. Theme Variables (Bright Light Mode by default & Dark Mode)
+   ========================================================================== */
+
+:root {
+    /* Bright / Light Theme Palette */
+    --bg-body: #f1f5f9;
+    --bg-gradient-header: linear-gradient(135deg, #ffffff, #f8fafc);
+    --bg-header: rgba(255, 255, 255, 0.95);
+    --bg-card: #ffffff;
+    --bg-card-alt: #f8fafc;
+    --bg-inner-box: #f8fafc;
+    --border-subtle: #e2e8f0;
+    --border-card: #cbd5e1;
+    --border-highlight: #6366f1;
+    
+    --text-main: #0f172a;
+    --text-body: #334155;
+    --text-muted: #64748b;
+    --text-faint: #94a3b8;
+
+    --card-shadow: 0 4px 12px -2px rgba(99, 102, 241, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+    --card-shadow-hover: 0 10px 25px -5px rgba(99, 102, 241, 0.18), 0 8px 10px -6px rgba(99, 102, 241, 0.1);
+
+    /* Colorful Accent Tones */
+    --accent-indigo: #4f46e5;
+    --accent-cyan: #0284c7;
+    --accent-emerald: #059669;
+    --accent-amber: #d97706;
+    --accent-rose: #e11d48;
+    --accent-purple: #7c3aed;
+}
+
+.dark {
+    /* Sleek Dark Theme Palette */
+    --bg-body: #080c14;
+    --bg-gradient-header: linear-gradient(135deg, #0d131f, #0f172a);
+    --bg-header: rgba(13, 19, 31, 0.95);
+    --bg-card: rgba(17, 24, 39, 0.85);
+    --bg-card-alt: #0f172a;
+    --bg-inner-box: #030712;
+    --border-subtle: rgba(75, 85, 99, 0.35);
+    --border-card: rgba(75, 85, 99, 0.5);
+    --border-highlight: #818cf8;
+
+    --text-main: #f8fafc;
+    --text-body: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+
+    --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    --card-shadow-hover: 0 15px 30px -5px rgba(99, 102, 241, 0.25);
+
+    /* Dark Mode Accents */
+    --accent-indigo: #6366f1;
+    --accent-cyan: #06b6d4;
+    --accent-emerald: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-rose: #f43f5e;
+    --accent-purple: #a855f7;
+}
+
+/* ==========================================================================
+   2. Global Typography & Layout
+   ========================================================================== */
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-body);
+    min-height: 100vh;
+    overflow-x: clip;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass & Card Surfaces */
+.glass-panel {
+    background: var(--bg-card);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border-subtle);
+    border-radius: 1rem;
+    box-shadow: var(--card-shadow);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+.glass-card-interactive {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.glass-card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--card-shadow-hover);
+    border-color: rgba(99, 102, 241, 0.5);
+}
+
+/* Sticky Stepper Bar Pinned State */
+.sticky-stepper {
+    position: sticky;
+    top: 4.25rem; /* Below the 64px header + gap */
+    z-index: 40;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.dark .sticky-stepper {
+    box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.1);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.4);
+    border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.8);
+}
+
+/* ==========================================================================
+   3. Glowing Status & Badge Indicators
+   ========================================================================== */
+
+.pulse-emerald {
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    animation: pulseGlowEmerald 2s infinite;
+}
+.pulse-amber {
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    animation: pulseGlowAmber 2s infinite;
+}
+.pulse-rose {
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.4);
+    animation: pulseGlowRose 2s infinite;
+}
+.pulse-indigo {
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+    animation: pulseGlowIndigo 2s infinite;
+}
+
+@keyframes pulseGlowEmerald {
+    0%, 100% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(16, 185, 129, 0.7); }
+}
+@keyframes pulseGlowAmber {
+    0%, 100% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.7); }
+}
+@keyframes pulseGlowRose {
+    0%, 100% { box-shadow: 0 0 8px rgba(244, 63, 94, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(244, 63, 94, 0.7); }
+}
+@keyframes pulseGlowIndigo {
+    0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(99, 102, 241, 0.7); }
+}
+
+/* ==========================================================================
+   4. Stepper Progress Nodes & Spotlight
+   ========================================================================== */
+
+.stage-node {
+    position: relative;
+    cursor: pointer;
+    background: var(--bg-card-alt);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stage-node:hover {
+    border-color: #818cf8;
+    transform: translateY(-1px);
+}
+
+.stage-node.active-stage {
+    transform: scale(1.04);
+    border-color: #6366f1 !important;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(6, 182, 212, 0.12)) !important;
+    box-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+}
+
+.stage-node.passed-stage {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.06);
+}
+
+/* Stage Card Spotlight in Walkthrough Mode */
+.stage-card-spotlight {
+    border: 2px solid #6366f1 !important;
+    box-shadow: 0 0 30px -5px rgba(99, 102, 241, 0.3) !important;
+    transform: translateY(-2px);
+}
+
+/* Entity Highlighting */
+.pii-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0.375rem;
+    margin: 0 0.2rem;
+    background: #ffe4e6;
+    border: 1px solid #fecdd3;
+    color: #e11d48;
+}
+
+.dark .pii-chip {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+.sanitized-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 0.375rem;
+    margin: 0 0.2rem;
+    background: #d1fae5;
+    border: 1px solid #a7f3d0;
+    color: #059669;
+}
+
+.dark .sanitized-chip {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.5);
+    color: #6ee7b7;
+}
+
+/* Dynamic Gauge / Score Bar */
+.score-fill {
+    transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.5s ease;
+}
+
+/* Modal Backdrop */
+.modal-overlay {
+    background-color: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+}
