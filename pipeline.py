@@ -102,10 +102,10 @@ def run_controlplane(
                 latency_ms=total_time_ms,
                 audit_hash=audit_entry.entry_hash
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to record interaction in database: {e}", exc_info=True)
 
-        return PipelineOutput(
+        output = PipelineOutput(
             final_response=final_text,
             decision=arbitration.decision,
             composite_score=arbitration.composite_score,
@@ -115,6 +115,8 @@ def run_controlplane(
             execution_mode=ExecutionMode.ADAPTIVE,
             active_path="FAST"
         )
+        clear_trace_id()
+        return output
 
     # ========================================================================
     # STAGE 2: Primary LLM Generation (BM25 Context Retrieval + CRAG Eval)
@@ -165,38 +167,37 @@ def run_controlplane(
 
     from concurrent.futures import ThreadPoolExecutor
 
+    def _timed(fn, *args, **kwargs):
+        t_call = time.perf_counter()
+        ret = fn(*args, **kwargs)
+        return ret, round((time.perf_counter() - t_call) * 1000, 2)
+
     t_s3 = time.perf_counter()
     if needs_deep:
         active_path = "DEEP"
         with ThreadPoolExecutor(max_workers=3) as executor:
-            fut_3a = executor.submit(run_stage3a_fast_checks, candidate_response, prompt)
-            fut_3b = executor.submit(verify_factual_grounding, candidate_response, prompt, None, True)
-            fut_3c = executor.submit(run_ai_judge, prompt, candidate_response, None, None)
+            fut_3a = executor.submit(_timed, run_stage3a_fast_checks, candidate_response, prompt)
+            fut_3b = executor.submit(_timed, verify_factual_grounding, candidate_response, prompt, None, True)
+            fut_3c = executor.submit(_timed, run_ai_judge, prompt, candidate_response, None, None)
 
-            t0_a = time.perf_counter()
-            stage3a_res = fut_3a.result()
-            waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0_a) * 1000, 2)
+            stage3a_res, stage3a_ms = fut_3a.result()
+            stage3b_res, stage3b_ms = fut_3b.result()
+            stage3c_res, stage3c_ms = fut_3c.result()
 
-            t0_b = time.perf_counter()
-            stage3b_res = fut_3b.result()
-            waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0_b) * 1000, 2)
-
-            t0_c = time.perf_counter()
-            stage3c_res = fut_3c.result()
-            waterfall["stage3c_ai_judge_ms"] = round((time.perf_counter() - t0_c) * 1000, 2)
+            waterfall["stage3a_fast_checks_ms"] = stage3a_ms
+            waterfall["stage3b_rag_grounding_ms"] = stage3b_ms
+            waterfall["stage3c_ai_judge_ms"] = stage3c_ms
     else:
         active_path = "FAST"
         with ThreadPoolExecutor(max_workers=2) as executor:
-            fut_3a = executor.submit(run_stage3a_fast_checks, candidate_response, prompt)
-            fut_3b = executor.submit(verify_factual_grounding, candidate_response, prompt, None, False)
+            fut_3a = executor.submit(_timed, run_stage3a_fast_checks, candidate_response, prompt)
+            fut_3b = executor.submit(_timed, verify_factual_grounding, candidate_response, prompt, None, False)
 
-            t0_a = time.perf_counter()
-            stage3a_res = fut_3a.result()
-            waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0_a) * 1000, 2)
+            stage3a_res, stage3a_ms = fut_3a.result()
+            stage3b_res, stage3b_ms = fut_3b.result()
 
-            t0_b = time.perf_counter()
-            stage3b_res = fut_3b.result()
-            waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0_b) * 1000, 2)
+            waterfall["stage3a_fast_checks_ms"] = stage3a_ms
+            waterfall["stage3b_rag_grounding_ms"] = stage3b_ms
 
         # Check if Stage 3A findings warrant post-elevation
         if stage3a_res.heuristic_risk > 2.0 or stage3a_res.stat_risk > 2.0:
@@ -282,10 +283,10 @@ def run_controlplane(
             latency_ms=total_time_ms,
             audit_hash=audit_entry.entry_hash
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to record interaction in database: {e}", exc_info=True)
 
-    return PipelineOutput(
+    output = PipelineOutput(
         final_response=delivered_response,
         decision=arbitration.decision,
         composite_score=arbitration.composite_score,
@@ -296,3 +297,5 @@ def run_controlplane(
         execution_mode=ExecutionMode.ADAPTIVE,
         active_path=active_path
     )
+    clear_trace_id()
+    return output

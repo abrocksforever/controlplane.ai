@@ -44,10 +44,17 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Enable CORS
+# Enable CORS with explicit origins
+allowed_origins_env = os.environ.get("CONTROLPLANE_CORS_ORIGINS")
+allowed_origins = [o.strip() for o in allowed_origins_env.split(",")] if allowed_origins_env else [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://localhost:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -329,12 +336,7 @@ async def get_hitl_tickets():
     """Retrieves pending and recent HITL quarantined tickets."""
     pending = db.list_pending_hitl_tickets()
     metrics = db.get_policy_tuning_metrics_from_db()
-    
-    # Fetch all recent tickets up to 500
-    with db.get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM hitl_tickets ORDER BY timestamp DESC LIMIT 500;")
-        all_rows = [dict(r) for r in cursor.fetchall()]
+    all_rows = db.list_all_hitl_tickets(limit=500)
 
     return {
         "pending_count": len(pending),

@@ -11,9 +11,10 @@ MAX_RETRIES = 3
 BASE_DELAY_SECONDS = 1.0
 TIMEOUT_SECONDS = 30
 
-# Default model ID (configurable via CONTROLPLANE_LLM_MODEL env var)
-DEFAULT_MODEL = os.environ.get("CONTROLPLANE_LLM_MODEL", "qwen/qwen3.8-27b")
-# DEFAULT_MODEL = os.environ.get("CONTROLPLANE_LLM_MODEL", "llama-3.1-8b-instant")
+from models import Config
+
+# Default model ID (consolidated single source of truth in models.Config)
+DEFAULT_MODEL = Config.DEFAULT_MODEL
 
 
 def _load_env_file():

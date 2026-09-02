@@ -70,6 +70,13 @@ class StructuredJSONFormatter(logging.Formatter):
         return json.dumps(log_entry, default=str)
 
 
+class TraceIdFilter(logging.Filter):
+    """Injects ContextVar trace_id into standard LogRecord attributes."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.trace_id = get_trace_id() or "none"
+        return True
+
+
 def configure_logging(
     level: Optional[str] = None,
     json_output: bool = True
@@ -92,6 +99,7 @@ def configure_logging(
     root_logger.handlers.clear()
 
     handler = logging.StreamHandler()
+    handler.addFilter(TraceIdFilter())
 
     if json_output:
         handler.setFormatter(StructuredJSONFormatter())

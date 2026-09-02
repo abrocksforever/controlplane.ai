@@ -11,6 +11,7 @@ Features:
    - Computes Grounding Score G (0-10), Verification Confidence (0.0-1.0), and VerificationStatus
 """
 
+import os
 import math
 import re
 import logging
@@ -251,9 +252,6 @@ def _is_number_in_negation_clause(num_str: str, text: str) -> bool:
 def _normalize_token(val: str) -> str:
     """Normalizes string for exact match (e.g. '$500' -> '$500', '30 days' -> '30 days')."""
     return re.sub(r"[,\.:;!?]+$", "", re.sub(r"\s+", " ", val.strip().lower()))
-
-
-import os
 
 
 def _run_batch_nli_entailment(

@@ -238,7 +238,17 @@ class HITLQueueManager:
         return None
 
     def list_pending_tickets(self) -> List[HITLTicket]:
-        return [t for t in self.tickets.values() if t.status == "PENDING"]
+        in_memory = [t for t in self.tickets.values() if t.status == "PENDING"]
+        if in_memory:
+            return in_memory
+        try:
+            from db import list_pending_hitl_tickets
+            db_pending = list_pending_hitl_tickets()
+            for t in db_pending:
+                self.tickets[t.ticket_id] = t
+            return db_pending
+        except Exception:
+            return in_memory
 
     def resolve_ticket(
         self,

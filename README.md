@@ -40,72 +40,36 @@ Traditional AI guardrail architectures create a painful trade-off:
 
 ## 5-Stage Modular Pipeline Architecture
 
+![ControlPlane.ai 5-Stage Architecture Flowchart](assets/controlplane_architecture_light.png)
+
+```mermaid
+graph TD
+    A["User Prompt"] --> B["Stage 1: PII + Injection Guard"]
+    B -->|Blocked| Z["BLOCK: Safe Fallback"]
+    B -->|Clean| C["Stage 2: BM25 Retrieval + LLM Generation"]
+    C --> D["Adaptive Latency Router"]
+    
+    D -->|FAST path| E["Stage 3A: Fast Checks"]
+    D -->|FAST path| F["Stage 3B: RAG Grounding"]
+    
+    D -->|DEEP path| E
+    D -->|DEEP path| F
+    D -->|DEEP path| G["Stage 3C: AI Judge"]
+    
+    E --> H["Stage 4: Policy Arbitration"]
+    F --> H
+    G --> H
+    
+    H -->|ALLOW| I["Stream to User"]
+    H -->|HITL| J["Quarantine Queue"]
+    H -->|BLOCK| Z
+    
+    J --> K["Human Review"]
+    K --> I
+    
+    H --> L["Stage 5: SHA-256 Audit Log"]
 ```
-                                  [ User Prompt ]
-                                         │
-                                         ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │ STAGE 1: Pre-Execution Guardrails (pii.py) [<1.0 ms]                        │
-  │ • Reverse-Offset Slice Masking (SSN, Email, Phone, API Keys)                │
-  │ • Luhn Algorithmic Checksum Validation (Visa, Mastercard, Amex, Discover)   │
-  │ • Weighted Adversarial Prompt Injection Classifier (DAN / Jailbreak Filter) │
-  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                         │ (Sanitized / PII-Masked Prompt)
-                                         ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │ STAGE 2: Context Retrieval & Primary Generation (llm_client.py)             │
-  │ • In-Memory BM25 Knowledge Retrieval (<0.05ms) + Authoritative Airbnb Corpus │
-  │ • Corrective RAG (CRAG) Retrieval Quality Evaluator (ρ calculation)         │
-  │ • Primary LLM Generation with Token Budgeting (Groq / Qwen / Llama-3)       │
-  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                         │ (Candidate Response Draft)
-                                         ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │ ADAPTIVE LATENCY ROUTER: Fast-Path vs Deep-Path Auto-Elevation              │
-  │ Routine traffic (ρ ≥ 0.70, clean heuristics) ───────────────► FAST PATH      │
-  │ Financial triggers, CRAG ambiguity, or risk anomaly ────────► DEEP PATH      │
-  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                         │
-                 ┌───────────────────────┴───────────────────────┐
-                 ▼                                               ▼
-  ┌──────────────────────────────┐                ┌──────────────────────────────┐
-  │ FAST-PATH CONCURRENT CHECKS  │                │ DEEP-PATH SCATTER-GATHER BUS │
-  │ (<15ms SLA)                  │                │ (<1.0s Wall-Clock Latency)   │
-  │                              │                │                              │
-  │ [STAGE 3A: Fast Checks]      │                │ [STAGE 3A: Fast Checks]      │
-  │ • Scatter-Gather Worker Bus  │                │ • Output PII & Banned Lexicon│
-  │ • Output PII & Banned Lexicon│                │ • Shannon Entropy & Loops    │
-  │ • Shannon Entropy & Loops    │                │                              │
-  │                              │                │ [STAGE 3B: Batched NLI]      │
-  │ [STAGE 3B: Negation Filter]  │                │ • Single-Call Batched NLI    │
-  │ • Numeric Span Extraction    │                │ • Assertion Pre-Filtering    │
-  │ • Sliding Negation Window    │                │ • 60-Char Negation Parsing   │
-  │ • In-Memory BM25 Grounding   │                │                              │
-  │                              │                │ [STAGE 3C: AI-as-a-Judge]    │
-  │                              │                │ • Demographic Bias Detection │
-  │                              │                │ • Hostile Tone Evaluation    │
-  │                              │                │ • Token Budgeted (max: 400)  │
-  └──────────────┬───────────────┘                └──────────────┬───────────────┘
-                 │                                               │
-                 └───────────────────────┬───────────────────────┘
-                                         │ (Risk Dimensions Breakdown)
-                                         ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │ STAGE 4: Policy Arbitration & Risk Assessment (arbitrator.py)               │
-  │ • Dynamic Active Weight Renormalization (w' = w_i / Σ w_active)             │
-  │ • Financial Gate Trigger (FinCheck: Wire Transfers / Bank Info / Payouts)   │
-  │ • 3-Tier Policy Decision Matrix:                                            │
-  │     [ALLOW: S ≤ 2.50]  │  [HITL Quarantine: 2.50 < S < 7.00]  │  [BLOCK: S ≥ 7.00]
-  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                         │
-                                         ▼
-  ┌─────────────────────────────────────────────────────────────────────────────┐
-  │ STAGE 5: Governance, HITL Queue & Cryptographic Audit (audit_hitl.py)       │
-  │ • Persistent SQLite HITL Triage Queue (ALLOW / EDIT / BLOCK Review)         │
-  │ • Active Learning Continuous Feedback Store                                 │
-  │ • Immutable O(1) Reverse-Seek SHA-256 Hash Chained Audit Ledger             │
-  └─────────────────────────────────────────────────────────────────────────────┘
-```
+
 
 ### Pipeline Stage Breakdown
 
@@ -486,7 +450,8 @@ ControlPlane.ai/
 ├── benchmark_airbnb.py            # Official 50-Question Airbnb Compliance Benchmark
 │
 ├── assets/                        # Static Documentation Assets
-│   └── dashboard.png              # Interactive Web Dashboard Screenshot
+│   ├── dashboard.png              # Interactive Web Dashboard Screenshot
+│   └── controlplane_architecture_light.png # Presentation Architecture Diagram (Light Mode)
 │
 ├── airbnb-grounding-rag-kb/       # Authoritative Airbnb Knowledge Base Corpus
 │   ├── cleaned/                   # 20 Authoritative Markdown Policy Documents

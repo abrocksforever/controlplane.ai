@@ -113,11 +113,19 @@ def load_airbnb_corpus_chunks(corpus_dir: Optional[str] = None) -> List[Knowledg
     return chunks
 
 
-def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
+_INITIALIZED_DBS = set()
+
+
+def init_db(db_path: str = DEFAULT_DB_PATH, force: bool = False) -> None:
     """
     Initializes database tables with schema versioning (PRAGMA user_version = 2)
     and seeds all 20 Airbnb knowledge base documents.
+    Fast-returns if already initialized for this process.
     """
+    global _INITIALIZED_DBS
+    if not force and db_path in _INITIALIZED_DBS and os.path.exists(db_path):
+        return
+
     with get_connection(db_path) as conn:
         cursor = conn.cursor()
 
@@ -225,6 +233,7 @@ def init_db(db_path: str = DEFAULT_DB_PATH) -> None:
                 logger.info(f"Seeded {len(airbnb_chunks)} Airbnb knowledge chunks into '{db_path}'.")
 
         conn.commit()
+        _INITIALIZED_DBS.add(db_path)
 
 
 # ============================================================================
@@ -385,6 +394,15 @@ def list_pending_hitl_tickets(db_path: str = DEFAULT_DB_PATH) -> List[HITLTicket
             )
             for r in rows
         ]
+
+
+def list_all_hitl_tickets(limit: int = 500, db_path: str = DEFAULT_DB_PATH) -> List[Dict[str, Any]]:
+    """Retrieves all recent tickets up to limit from the database."""
+    init_db(db_path)
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM hitl_tickets ORDER BY timestamp DESC LIMIT ?;", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
 
 
 # ============================================================================

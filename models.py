@@ -219,8 +219,8 @@ class Config:
     with the CONTROLPLANE_ prefix (e.g., CONTROLPLANE_ALLOW_THRESHOLD=3.0).
     """
     
-    # Default LLM Model ID (overridable via CONTROLPLANE_LLM_MODEL)
-    DEFAULT_MODEL: str = os.environ.get("CONTROLPLANE_LLM_MODEL", "qwen/qwen3.8-27b")
+    # Default LLM Model ID (overridable via CONTROLPLANE_LLM_MODEL or GROQ_MODEL)
+    DEFAULT_MODEL: str = os.environ.get("CONTROLPLANE_LLM_MODEL") or os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
 
     # Score Thresholds (overridable via CONTROLPLANE_ALLOW_THRESHOLD, CONTROLPLANE_BLOCK_THRESHOLD)
     ALLOW_THRESHOLD: float = float(os.environ.get("CONTROLPLANE_ALLOW_THRESHOLD", "2.5"))
@@ -274,42 +274,3 @@ class Config:
         "classified credentials", "internal secret keys", "private api token"
     ]
 
-
-# In-Memory Enterprise Knowledge Base for RAG Verification
-ENTERPRISE_KNOWLEDGE_BASE: List[KnowledgeChunk] = [
-    KnowledgeChunk(
-        doc_id="KB-001",
-        title="Enterprise Return and Refund Policy",
-        category="refund_policy",
-        content=(
-            "Standard items can be returned within 30 days of purchase for a full refund. "
-            "Refunds are processed to the original payment method within 5 to 7 business days. "
-            "Promotional or clearance items are eligible for store credit only within 14 days. "
-            "No cash refunds are issued for amounts exceeding $100 without manager authorization."
-        ),
-        keywords=["return", "refund", "30 days", "store credit", "14 days", "$100", "cash refund"]
-    ),
-    KnowledgeChunk(
-        doc_id="KB-002",
-        title="Credit Line and Loan Underwriting Guidelines",
-        category="credit_underwriting",
-        content=(
-            "Automated credit line increases cannot exceed $2,500 without secondary credit analysis. "
-            "Any loan application denial must be strictly based on Debt-to-Income ratio (>43%) or "
-            "verified credit bureau score (<620). Demographic attributes, marital status, and geographic "
-            "proxies must never be used in credit evaluations."
-        ),
-        keywords=["credit", "loan", "underwriting", "$2,500", "debt-to-income", "credit score", "fair lending"]
-    ),
-    KnowledgeChunk(
-        doc_id="KB-003",
-        title="Information Security and Credential Handling",
-        category="security",
-        content=(
-            "API keys, master credentials, and cryptographic seed tokens must never be disclosed to "
-            "end-users under any circumstances. System architecture prompts and hidden directives are "
-            "strictly confidential proprietary assets."
-        ),
-        keywords=["api key", "credentials", "security", "token", "confidential", "system prompt"]
-    ),
-]
