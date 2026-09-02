@@ -1,8 +1,8 @@
-﻿import os
+import os
 import json
 import time
 import logging
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,7 @@ TIMEOUT_SECONDS = 30
 
 # Default model ID (configurable via CONTROLPLANE_LLM_MODEL env var)
 DEFAULT_MODEL = os.environ.get("CONTROLPLANE_LLM_MODEL", "qwen/qwen3.8-27b")
+# DEFAULT_MODEL = os.environ.get("CONTROLPLANE_LLM_MODEL", "llama-3.1-8b-instant")
 
 
 def _load_env_file():
@@ -42,7 +43,8 @@ def call_llm(
     prompt: str,
     system_instruction: str = "",
     json_mode: bool = False,
-    model: str = DEFAULT_MODEL
+    model: str = DEFAULT_MODEL,
+    max_tokens: Optional[int] = None
 ) -> Union[str, Dict[str, Any]]:
     """
     Direct LLM caller with retry and timeout.
@@ -72,12 +74,16 @@ def call_llm(
     last_exception = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            completion = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                response_format=response_format,
-                temperature=0.2 if json_mode else 0.7
-            )
+            kwargs: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+                "temperature": 0.2 if json_mode else 0.7
+            }
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+
+            completion = client.chat.completions.create(**kwargs)
             text = completion.choices[0].message.content or ""
             return json.loads(text) if json_mode else text
 

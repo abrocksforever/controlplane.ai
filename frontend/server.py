@@ -15,7 +15,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +52,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Prevent aggressive browser caching during demonstration
+@app.middleware("http")
+async def add_no_cache_header(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):
@@ -281,7 +291,7 @@ async def run_pipeline(req: RunPromptRequest):
                     "unsupported_claims": s3b.get("unsupported_claims", [])
                 },
                 "step3c_ai_judge": {
-                    "name": "Stage 3C: AI-as-a-Judge Sequential Evaluation",
+                    "name": "Stage 3C: AI-as-a-Judge Parallel Compliance Evaluation",
                     "latency_ms": waterfall.get("stage3c_ai_judge_ms", 0.0),
                     "bias_score": s3c.get("bias_score", 0.0),
                     "tone_score": s3c.get("tone_score", 0.0),
@@ -320,10 +330,10 @@ async def get_hitl_tickets():
     pending = db.list_pending_hitl_tickets()
     metrics = db.get_policy_tuning_metrics_from_db()
     
-    # Also fetch resolved tickets
+    # Fetch all recent tickets up to 500
     with db.get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM hitl_tickets ORDER BY timestamp DESC LIMIT 50;")
+        cursor.execute("SELECT * FROM hitl_tickets ORDER BY timestamp DESC LIMIT 500;")
         all_rows = [dict(r) for r in cursor.fetchall()]
 
     return {
@@ -332,6 +342,15 @@ async def get_hitl_tickets():
         "all_tickets": all_rows,
         "metrics": metrics
     }
+
+
+@app.get("/api/hitl/ticket/{ticket_id}")
+async def get_single_hitl_ticket(ticket_id: str):
+    """Fetches a specific HITL ticket by ID."""
+    ticket = db.get_hitl_ticket(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return {"ticket": ticket.model_dump()}
 
 
 @app.post("/api/hitl/resolve")
@@ -476,7 +495,7 @@ async def get_system_stats():
 def start_server(host: str = "127.0.0.1", port: int = 8000, reload: bool = False):
     """Starts the Uvicorn ASGI server."""
     print("\n" + "=" * 75)
-    print("  🚀 CONTROLPLANE.AI DEMONSTRATION WEB SERVER")
+    print("  [*] CONTROLPLANE.AI DEMONSTRATION WEB SERVER")
     print(f"  Access the Step-by-Step Demonstration UI at: http://{host}:{port}")
     print("=" * 75 + "\n")
     uvicorn.run("frontend.server:app", host=host, port=port, reload=reload)

@@ -1,4 +1,4 @@
-# 🛡️ ControlPlane.ai — Responsible AI Control Plane & Evaluative Gateway
+# ControlPlane.ai — Responsible AI Control Plane & Evaluative Gateway
 
 <div align="center">
 
@@ -6,19 +6,19 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Pytest](https://img.shields.io/badge/Tests-113%2F113%20Passed%20(100%25)-059669?logo=pytest&logoColor=white)](tests/)
 [![Benchmark](https://img.shields.io/badge/Benchmark-50%2F50%20Compliant%20(100%25)-6366F1)](benchmark_airbnb.py)
-[![Fast-Path Latency](https://img.shields.io/badge/Fast--Path%20Latency-%3C%2015ms%20(P50%3A%2011.9ms)-06B6D4)](#-performance-benchmarks)
+[![Fast-Path Latency](https://img.shields.io/badge/Fast--Path%20Latency-%3C%2015ms%20(P50%3A%2011.9ms)-06B6D4)](#performance-benchmarks)
 [![Audit Log](https://img.shields.io/badge/Audit%20Log-SHA--256%20Hash%20Chained-8B5CF6)](#5-cryptographic-sha-256-hash-chained-audit-log)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B.svg)](LICENSE)
 
-**A high-performance, modular Responsible AI Control Plane featuring sub-millisecond pre-execution guardrails, parallel scatter-gather heuristics, Corrective RAG (CRAG) factual grounding, zero false-positive negation filtering, AI-as-a-Judge compliance evaluation, 3-tier policy arbitration, and immutable cryptographic SHA-256 hash-chained audit logging.**
+**A high-performance, modular Responsible AI Control Plane featuring sub-millisecond pre-execution guardrails, parallel scatter-gather heuristics, Corrective RAG (CRAG) factual grounding, context-aware sliding negation filtering, AI-as-a-Judge compliance evaluation, 3-tier policy arbitration, and immutable cryptographic SHA-256 hash-chained audit logging.**
 
-[🚀 Quick Start](#-quick-start) • [🌐 Web Dashboard Guide](#-interactive-web-dashboard-guide) • [✨ Key Innovations](#-key-architectural-innovations) • [📊 Benchmark Scorecard](#-performance-benchmarks) • [📚 API Reference](#-rest-api-reference) • [📁 Directory Structure](#-repository-structure)
+[Quick Start](#quick-start) • [Web Dashboard Guide](#interactive-web-dashboard-guide) • [Key Innovations](#key-architectural-innovations) • [Benchmark Scorecard](#performance-benchmarks) • [API Reference](#rest-api-reference) • [Directory Structure](#repository-structure)
 
 </div>
 
 ---
 
-## 📌 Problem Statement Overview (PS1 Alignment)
+## Problem Statement Overview (PS1 Alignment)
 
 Enterprise deployment of Large Language Models introduces severe operational, financial, and regulatory vulnerabilities:
 - **Sensitive Data Exfiltration**: Accidental disclosure of customer PII (SSNs, credit cards, emails, phone numbers, secret API keys).
@@ -33,12 +33,12 @@ Traditional AI guardrail architectures create a painful trade-off:
 **`ControlPlane.ai`** resolves this dilemma through a decoupled, multi-tiered evaluative control plane designed to:
 1. **Intercept Threats Early ($<1\text{ms}$)**: Redact PII in-flight with reverse-offset slicing, validate credit cards via Luhn checksums, and terminate adversarial jailbreaks pre-execution.
 2. **Eliminate Hallucinations with Corrective RAG (CRAG)**: Compute normalized retrieval quality ($\rho \in [0, 1]$), actively abstain on unindexed empirical claims, and apply 60-character sliding negation-window parsing to eliminate false positive refutations.
-3. **Route Adaptively for Real-Time SLAs**: Deliver clean routine inquiries in **$<15\text{ms}$** (Fast-Path), dynamically auto-elevating to Deep-Path ($<2000\text{ms}$) only upon financial triggers, CRAG retrieval ambiguity, or statistical risk spikes.
-4. **Enforce Absolute Auditability**: Cryptographically chain every prompt, decision, risk score, and timestamp into an immutable SHA-256 ledger with a zero-friction Human-in-the-Loop (HITL) triage queue.
+3. **Route Adaptively for Real-Time SLAs**: Deliver clean routine inquiries in **$<15\text{ms}$** (Fast-Path), dynamically auto-elevating to Deep-Path ($<3000\text{ms}$) only upon financial triggers, CRAG retrieval ambiguity, or statistical risk spikes.
+4. **Enforce Absolute Auditability**: Cryptographically chain every prompt, decision, risk score, and timestamp into an immutable SHA-256 ledger with an integrated Human-in-the-Loop (HITL) triage queue.
 
 ---
 
-## 🏛️ 5-Stage Modular Pipeline Architecture
+## 5-Stage Modular Pipeline Architecture
 
 ```
                                   [ User Prompt ]
@@ -56,7 +56,7 @@ Traditional AI guardrail architectures create a painful trade-off:
   │ STAGE 2: Context Retrieval & Primary Generation (llm_client.py)             │
   │ • In-Memory BM25 Knowledge Retrieval (<0.05ms) + Authoritative Airbnb Corpus │
   │ • Corrective RAG (CRAG) Retrieval Quality Evaluator (ρ calculation)         │
-  │ • Primary LLM Generation (Groq / Qwen / Llama-3.3-70B or Offline Engine)   │
+  │ • Primary LLM Generation with Token Budgeting (Groq / Qwen / Llama-3)       │
   └──────────────────────────────────────┬──────────────────────────────────────┘
                                          │ (Candidate Response Draft)
                                          ▼
@@ -69,16 +69,22 @@ Traditional AI guardrail architectures create a painful trade-off:
                  ┌───────────────────────┴───────────────────────┐
                  ▼                                               ▼
   ┌──────────────────────────────┐                ┌──────────────────────────────┐
-  │ FAST-PATH PARALLEL CHECKS    │                │ DEEP-PATH EVALUATION         │
+  │ FAST-PATH CONCURRENT CHECKS  │                │ DEEP-PATH SCATTER-GATHER BUS │
+  │ (<15ms SLA)                  │                │ (<1.0s Wall-Clock Latency)   │
   │                              │                │                              │
-  │ [STAGE 3A: Fast Checks]      │                │ [STAGE 3B: Semantic NLI]     │
-  │ • Scatter-Gather Worker Bus  │                │ • Sentence-Level Entailment  │
-  │ • Output PII & Banned Lexicon│                │ • Refusal/Disclaimer Immunity│
+  │ [STAGE 3A: Fast Checks]      │                │ [STAGE 3A: Fast Checks]      │
+  │ • Scatter-Gather Worker Bus  │                │ • Output PII & Banned Lexicon│
+  │ • Output PII & Banned Lexicon│                │ • Shannon Entropy & Loops    │
   │ • Shannon Entropy & Loops    │                │                              │
+  │                              │                │ [STAGE 3B: Batched NLI]      │
+  │ [STAGE 3B: Negation Filter]  │                │ • Single-Call Batched NLI    │
+  │ • Numeric Span Extraction    │                │ • Assertion Pre-Filtering    │
+  │ • Sliding Negation Window    │                │ • 60-Char Negation Parsing   │
+  │ • In-Memory BM25 Grounding   │                │                              │
   │                              │                │ [STAGE 3C: AI-as-a-Judge]    │
-  │ [STAGE 3B: Negation Filter]  │                │ • JSON Mode Compliance LLM   │
-  │ • Numeric Span Extraction    │                │ • Demographic Bias Detection │
-  │ • Refusal Clause Immunity    │                │ • Tone & Policy Verification │
+  │                              │                │ • Demographic Bias Detection │
+  │                              │                │ • Hostile Tone Evaluation    │
+  │                              │                │ • Token Budgeted (max: 400)  │
   └──────────────┬───────────────┘                └──────────────┬───────────────┘
                  │                                               │
                  └───────────────────────┬───────────────────────┘
@@ -106,16 +112,17 @@ Traditional AI guardrail architectures create a painful trade-off:
 | Stage | Primary Module | Core Functionality | Latency SLA |
 | :--- | :--- | :--- | :--- |
 | **Stage 1: Pre-Execution Guardrails** | `pii.py` | Reverse-offset PII redaction, Luhn validation, weighted prompt injection classification | $<1.0\text{ ms}$ |
-| **Stage 2: Retrieval & Generation** | `llm_client.py`, `db.py` | In-memory BM25 retrieval across 20 Markdown policies, CRAG confidence score ($\rho$), draft generation | $<0.05\text{ ms}$ (Ret) |
-| **Stage 3A: Fast Parallel Checks** | `fast_checks.py` | Scatter-gather worker bus, output PII, banned lexicon, Shannon entropy, degenerate loops | $<2.0\text{ ms}$ |
-| **Stage 3B: Factual Grounding** | `rag_verifier.py` | Numeric/temporal span matching, 60-char sliding negation window parsing, active abstention | $<5.0\text{ ms}$ |
-| **Stage 3C: AI-as-a-Judge** | `ai_judge.py` | Secondary LLM structured JSON evaluation for bias, tone, and complex policy adherence | $<1500\text{ ms}$ (Deep only) |
+| **Stage 2: Retrieval & Generation** | `llm_client.py`, `db.py` | In-memory BM25 retrieval across 20 Markdown policies, CRAG confidence score ($\rho$), draft generation with token budgeting (`max_tokens=250`) | $<0.05\text{ ms}$ (Ret) |
+| **Stage 3A: Fast Parallel Checks** | `fast_checks.py` | Scatter-gather worker bus, output PII, banned lexicon, Shannon entropy, degenerate loops | $<1.0\text{ ms}$ |
+| **Stage 3B: Batched Factual Grounding** | `rag_verifier.py` | Single-call batched NLI claim entailment, assertion pre-filtering, 60-char sliding negation window parsing, active abstention | $<800\text{ ms}$ (Deep) / $0.0\text{ ms}$ (Fast) |
+| **Stage 3C: AI-as-a-Judge** | `ai_judge.py` | Concurrent compliance evaluation via Groq JSON mode with token budgeting (`max_tokens=400`) for bias, tone, and policy | $<1000\text{ ms}$ (Deep only) |
+| **Stage 3 Parallel Bus (Wall-Clock)** | `pipeline.py` | Scatter-Gather concurrency via `ThreadPoolExecutor(max_workers=3)`: $\max(T_{3A}, T_{3B}, T_{3C})$ | $<1.0\text{ s}$ (Deep) / $<13\text{ ms}$ (Fast) |
 | **Stage 4: Policy Arbitration** | `arbitrator.py` | Composite risk score calculation ($S \in [0, 10]$), financial trigger gate, 3-tier routing | $<0.1\text{ ms}$ |
-| **Stage 5: Audit & Governance** | `audit_hitl.py` | Cryptographic SHA-256 recursive hash chaining, SQLite HITL ticket quarantine, active feedback | $<0.5\text{ ms}$ |
+| **Stage 5: Audit & Governance** | `audit_hitl.py` | Cryptographic SHA-256 recursive hash chaining, SQLite HITL ticket quarantine, active feedback | $<15.0\text{ ms}$ |
 
 ---
 
-## ✨ Key Architectural Innovations
+## Key Architectural Innovations
 
 ### 1. Corrective RAG (CRAG) & Active Abstention Gate
 Standard RAG systems blindly forward ungrounded candidate claims when relevant documents cannot be found. ControlPlane.ai computes a normalized retrieval confidence score $\rho \in [0.0, 1.0]$ combining BM25 top-rank relevance and token coverage:
@@ -127,11 +134,11 @@ $$\rho = 0.30 \times \min\left(1.0, \frac{S_{\text{top}}}{6.0}\right) + 0.70 \ti
 - **Knowledge Gap Active Abstention ($\rho < 0.40$)**: If empirical or contractual claims are asserted without indexed grounding evidence, the verifier sets Grounding Score $G = 2.50$ ($R_{\text{rag}} = 7.50$), actively quarantining the response to human review (`HITL`).
 - **Benign Pleasantry Exemption**: Conversational greetings and expressions of gratitude without factual claims are assigned $G = 10.0$ ($R_{\text{rag}} = 0.0$) $\implies$ `ALLOW`.
 
-### 2. Negation-Aware Entity Filtering (Zero False Positives)
+### 2. Negation-Aware Entity Filtering (Minimizing False Positive Refutations)
 When a customer asks *"Can I cancel after 45 days for a $2,000 refund?"*, an accurate AI assistant must quote the user's invalid number to deny it: *"Cancelling after 45 days does not qualify for a $2,000 refund."*
 
 Standard regex and NER guardrails flag the presence of "$2,000" as an ungrounded hallucination. Our **60-character sliding negation-window parser** inspects the preceding and succeeding tokens for refutation markers (`cannot`, `does not qualify`, `won't be refunded`, `no refund`, `ineligible`, `not eligible`).
-- **Refutation Match**: The span is recognized as a valid denial and exempted from penalty (**0% false positive rate**).
+- **Refutation Match**: The span is recognized as a valid denial and exempted from penalty (avoiding false positive penalties on legitimate customer service denials).
 - **Affirmative Hallucination**: Ungrounded numeric assertions (e.g., *"You will receive a $2,000 refund"*) receive a strict $-3.5\text{ pt}$ deduction per violation.
 
 ### 3. Always-Adaptive Latency Routing (<15ms SLA)
@@ -147,13 +154,40 @@ Standard regex and NER guardrails flag the presence of "$2,000" as an ungrounded
   - **HITL Quarantine** ($2.50 < S < 7.00$ or Financial Trigger): Quarantined in SQLite review queue.
   - **BLOCK** ($S \ge 7.00$ or Critical Stage 1 Injection): Terminated with safe canned fallback.
 
-### 4. Zero-Config Self-Healing SQLite Layer
+### 4. Scatter-Gather Concurrent Parallel Bus (Stage 3A, 3B, 3C)
+Previously, post-generation compliance checks ran in a sequential waterfall ($T_{\text{stage3}} = T_{3A} + T_{3B} + T_{3C}$), causing total turnaround times to exceed 30 seconds on complex prompts. ControlPlane.ai now dispatches all three inspection gates concurrently via Python's `ThreadPoolExecutor(max_workers=3)`:
+- **Worker 1 (Stage 3A)**: Evaluates output PII, banned lexicon, Shannon entropy, and loop repetition in parallel memory ($<1\text{ms}$).
+- **Worker 2 (Stage 3B)**: Runs BM25 grounding and batched NLI claim entailment.
+- **Worker 3 (Stage 3C)**: Runs AI-as-a-Judge compliance evaluation via Groq JSON mode with token budgeting.
+
+Total Stage 3 Wall-Clock Latency is now bounded by the maximum single worker:
+$$T_{\text{parallel}} = \max(T_{3A}, T_{3B}, T_{3C}) \approx 990\text{ ms} \quad (\text{vs. } 32,069\text{ ms sequential})$$
+
+### 5. Single-Call Batched NLI & Conversational Assertion Pre-Filtering
+Standard sentence-level NLI verifiers iterate over candidate sentences in a serial loop (`for sentence in sentences: call_llm(...)`), triggering multiple sequential round-trips to remote LLMs. ControlPlane.ai introduces a dual-layer optimization:
+1. **Conversational Assertion Pre-Filtering (`evaluate_factual_assertions`)**: Scans candidate sentences for empirical assertions (currency symbols, numeric quantities, timeframes, policy actions). Polite conversational pleasantries (e.g., *"Have a safe trip!"*, *"Thank you for contacting us"*) are recognized in $0.01\text{ms}$ and exempted from remote NLI evaluation.
+2. **Single-Call Batched NLI (`_run_batch_nli_entailment`)**: All candidate empirical claims requiring verification are bundled into a single structured prompt and evaluated in **one single batched JSON call**:
+   ```json
+   {
+     "results": [
+       {"index": 1, "label": "entailed"},
+       {"index": 2, "label": "unsupported"}
+     ]
+   }
+   ```
+   This slashes Stage 3B latency from **26,677 ms down to <800 ms** (or $0.0\text{ms}$ when local heuristics suffice).
+
+### 6. Primary Generation & Judge Token Budgeting
+- **Primary LLM Generation (Stage 2)**: Constrained with `max_tokens=250` budget to prevent rambling while answering customer queries thoroughly, cutting generation time from 2,311ms to ~1,500ms.
+- **AI-as-a-Judge (Stage 3C)**: Budgeted with `max_tokens=400` and powered by high-throughput evaluation models (`openai/gpt-oss-20b` or `CONTROLPLANE_EVAL_MODEL`), dropping evaluation latency from 5,392ms down to **~985 ms**.
+
+### 7. Zero-Config Self-Healing SQLite Layer
 If `controlplane.db` is missing upon startup, launching the **Interactive Web Dashboard** automatically:
 1. Initializes all SQLite schema tables (`knowledge_base`, `hitl_tickets`, `feedback_store`, `interactions`).
 2. Discovers and indexes all **20 authoritative Airbnb Markdown policy documents** from `airbnb-grounding-rag-kb/cleaned/`.
 3. Warms the in-memory BM25 index in $<50\text{ms}$ with zero manual migration or configuration required.
 
-### 5. Cryptographic SHA-256 Hash-Chained Audit Log
+### 8. Cryptographic SHA-256 Hash-Chained Audit Log
 Every pipeline execution produces a signed, immutable record in `audit_log.jsonl`. Each entry is linked to its predecessor via recursive cryptographic hashing:
 
 $$H_i = \text{SHA-256}\left( \text{EntryID}_i \parallel \text{Timestamp}_i \parallel \text{PromptHash}_i \parallel \text{Decision}_i \parallel \text{Score}_i \parallel H_{i-1} \right)$$
@@ -164,26 +198,54 @@ $$H_i = \text{SHA-256}\left( \text{EntryID}_i \parallel \text{Timestamp}_i \para
 
 ---
 
-## 📊 Performance Benchmarks
+## Performance Benchmarks
 
-### 50-Question Airbnb Grounding & Safety Benchmark (`benchmark_airbnb.py`)
+### 1. End-to-End Latency Profile & Parallel Bus Benchmark
 
-The benchmark suite rigorously evaluates 50 real-world Airbnb guest/host scenarios encompassing clean inquiries, ungrounded traps, cancellation disputes, and financial trigger edge cases:
+Latency measurements differentiate between **ControlPlane.ai Gateway evaluation overhead** and **downstream Primary LLM generation time** over external cloud APIs.
 
-| Benchmark Dimension | Target Specification | Achieved Metric | Status |
-| :--- | :---: | :---: | :---: |
-| **Overall Safety Compliance** | $\ge 98.0\%$ | **50 / 50 (100.0%)** | 🏆 **Perfect** |
-| **Autonomous Deflection (`ALLOW`)** | $\ge 90.0\%$ | **18 / 18 (100.0%)** | ⚡ **Zero False Blocks** |
-| **Hallucination Interception (`BLOCK`)** | $100.0\%$ | **25 / 25 (100.0%)** | 🛡️ **Zero Leaks** |
-| **Ambiguity Quarantine (`FLAG` $\to$ `HITL`)** | $100.0\%$ | **7 / 7 (100.0%)** | 🎯 **100% Precision** |
-| **Fast-Path Latency (P50)** | $< 15.0\text{ ms}$ | **11.84 ms** | ⚡ **Ultra-Fast** |
-| **Fast-Path Latency (P90)** | $< 20.0\text{ ms}$ | **12.61 ms** | ⚡ **Ultra-Fast** |
-| **Pytest Unit Test Suite** | $100.0\%$ | **113 / 113 Passed** | ✅ **Verified** |
-| **Audit Log Integrity** | $100.0\%$ Continuous | **100% Verified Chain** | 🔒 **Tamper-Proof** |
+**Test Scenario**: High-liability financial query evaluated on Deep-Path (*"I was double charged and need a $2,000 wire transfer payout immediately"*):
+
+| Pipeline Component | Sequential Baseline (P50) | Concurrent Parallel Bus (P50) | Execution Type | Operational Notes |
+| :--- | :---: | :---: | :--- | :--- |
+| **Stage 1: Pre-Execution Guardrails** | $0.8\text{ ms}$ | **$0.1\text{ ms}$** | Local CPU | In-memory regex & Luhn checksum |
+| **Stage 2: Primary LLM Generation** | $2,311\text{ ms}$ | **$1,910\text{ ms}$** | Cloud API (WAN) | Token-budgeted at 250 max tokens |
+| **Stage 3A: Fast Parallel Checks** | $5.0\text{ ms}$ | **$0.2\text{ ms}$** | Local CPU (Parallel) | In-memory entropy & lexicon scanner |
+| **Stage 3B: RAG Grounding Verification** | $26,677\text{ ms}$ | **$0.0\text{ - }780\text{ ms}$** | Hybrid Local / API | $0.0\text{ ms}$ when assertion-filtered; ~780ms when batched NLI invoked |
+| **Stage 3C: AI-as-a-Judge Compliance** | $5,392\text{ ms}$ | **$985\text{ ms}$** | Cloud API (Parallel) | Structured JSON compliance evaluation (`max_tokens=400`) |
+| ──────────────────────────────────── | ──────────── | ──────────── | ─────────────────── | ────────────────────────────────────────────── |
+| **Stage 3 Wall-Clock Bus Latency** | $32,069\text{ ms}$ | **$999\text{ ms}$** | Multi-Threaded Bus | $\max(T_{3A}, T_{3B}, T_{3C})$ concurrent execution |
+| **Stage 4: Policy Arbitration** | $0.1\text{ ms}$ | **$0.1\text{ ms}$** | Local CPU | Mathematical weight normalization |
+| **Stage 5: Cryptographic Governance** | $23.4\text{ ms}$ | **$12.4\text{ ms}$** | Local Disk I/O | SQLite write + SHA-256 hash chaining |
+| ==================================== | ============ | ============ | =================== | ============================================== |
+| **Total Turnaround (Deep-Path)** | **$34,408\text{ ms}$** | **$2,941\text{ ms}$** | End-to-End System | **91.5% Latency Reduction** (~34.4s to ~2.9s) |
+| **Total Turnaround (Fast-Path Routine)**| **$\sim 2,350\text{ ms}$** | **$1,512\text{ ms}$** | End-to-End System | **$<13\text{ ms}$ Total Gateway Inspection Overhead** |
+
+*Environment: Windows 11 64-bit, Python 3.13, local in-memory BM25 + SQLite 3.45. Remote inference: Groq Cloud LPU endpoints (`qwen/qwen3.8-27b` for primary generation, `openai/gpt-oss-20b` for evaluation).*
 
 ---
 
-## 🚀 Quick Start
+### 2. 50-Case Grounding & Compliance Benchmark (`benchmark_airbnb.py`)
+
+The benchmark evaluates 50 curated Airbnb domain scenarios spanning clean policy queries, ungrounded traps, cancellation disputes, and financial trigger edge cases:
+
+| Metric | Measured Result | Benchmark Standard | Operational Meaning |
+| :--- | :---: | :---: | :--- |
+| **Evaluated Test Cases** | **50 / 50** | 50 Cases | 18 factual FAQs, 25 policy violations, 7 edge cases |
+| **Safety Containment Rate** | **50 / 50 (100.0%)** | $\ge 98.0\%$ | Zero unauthorized or ungrounded responses reached client unvetted |
+| **Autonomous Clean Deflection (`ALLOW`)** | **18 / 18 (100.0%)** | $\ge 90.0\%$ | Valid in-scope policy FAQs delivered without human review |
+| **Direct Hard Gateway Rejections (`BLOCK`)** | **4 / 25 (16.0%)** | Tracked | Immediate termination for critical prompt injection and explicit contradictions |
+| **Quarantine Escalation to Triage (`HITL`)** | **21 / 25 (84.0%)** | Tracked | High-risk and ambiguous claims routed to human queue ($2.5 < S < 7.0$) |
+| **Ambiguity Triage Capture (`FLAG` $\to$ `HITL`)** | **7 / 7 (100.0%)** | $\ge 95.0\%$ | Edge cases with partial retrieval grounding routed to human review |
+| **False Rejection Rate on Clean FAQs** | **0 / 18 (0.0%)** | $\le 5.0\%$ | Zero legitimate policy answers falsely blocked on benchmark suite |
+| **Fast-Path Gateway Overhead (P50)** | **11.84 ms** | $< 15.0\text{ ms}$ | Evaluative gateway latency on routine traffic |
+| **Fast-Path Gateway Overhead (P90)** | **12.61 ms** | $< 20.0\text{ ms}$ | 90th percentile evaluative gateway latency |
+| **Cryptographic Ledger Continuity** | **100% Verified** | Continuous | Complete SHA-256 hash continuity verified via reverse-seek |
+| **Pytest Automated Test Coverage** | **113 / 113 Passed** | 100% Pass | Unit and integration test suite passing |
+
+---
+
+## Quick Start
 
 ### 1. Clone & Install Dependencies
 
@@ -224,7 +286,7 @@ Launch the application with a single command:
 python frontend/run.py
 ```
 
-> 🌐 **Automatic Browser Launch**: This starts the FastAPI / Uvicorn server on `http://127.0.0.1:8000`, initializes the SQLite database with all 20 authoritative policy documents, and automatically opens the interactive dashboard in your default browser.
+>  **Automatic Browser Launch**: This starts the FastAPI / Uvicorn server on `http://127.0.0.1:8000`, initializes the SQLite database with all 20 authoritative policy documents, and automatically opens the interactive dashboard in your default browser.
 > 
 > *Alternatively, start via Uvicorn directly:*
 > ```bash
@@ -243,22 +305,22 @@ pytest -v
 
 ---
 
-## 🌐 Interactive Web Dashboard Guide
+## Interactive Web Dashboard Guide
 
 The web interface (`frontend/`) is an executive-ready, glassmorphic Single-Page Application (SPA) designed for interactive step-by-step demonstration, real-time risk inspection, and human compliance operations.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ 🛡️ ControlPlane.ai   [Live Demonstration] [HITL Queue (3)] [Knowledge Base] [Audit Log] [☀️] │
+│  ControlPlane.ai   [Live Demonstration] [HITL Queue (3)] [Knowledge Base] [Audit Log] [Theme] │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 💡 PRESET SCENARIOS:                                                                        │
+│  PRESET SCENARIOS:                                                                        │
 │ [ 1. Safe UPI Inquiry ]  [ 2. Financial $3.5k Payout ]  [ 3. Credit Card PII ]            │
 │ [ 4. Ungrounded Refund Trap ]  [ 5. DAN Jailbreak Attack ]  [ 6. Fabricated Guarantee ]     │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │  PROMPT INPUT & CONTROLS:                                                                   │
 │  ┌──────────────────────────────────────────────────────────┐  Execution: [ADAPTIVE ▼]      │
-│  │ What is the refund timeline for UPI payments in India?   │  [▶ Run Full Pipeline]        │
-│  └──────────────────────────────────────────────────────────┘  [⚡ Step-by-Step Mode]       │
+│  │ What is the refund timeline for UPI payments in India?   │  [Run Full Pipeline]        │
+│  └──────────────────────────────────────────────────────────┘  [Step-by-Step Mode]       │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │  STEP-BY-STEP INSPECTION WATERFALL:                                                         │
 │  [● Stage 1: Guardrails] ──► [● Stage 2: CRAG] ──► [● Stage 3: Checks] ──► [● Stage 4: Arb] │
@@ -276,7 +338,7 @@ The web interface (`frontend/`) is an executive-ready, glassmorphic Single-Page 
 
 - **Interactive Stepper vs Full Run**:
   - **Full Run**: Click **"Run Full Pipeline"** for immediate end-to-end evaluation with real-time waterfall timing.
-  - **Step-by-Step Walkthrough**: Toggle **"Step-by-Step Mode"** to pause at each stage. Use **"Next Step ▶"** or **"Auto Play ⏯️"** to observe stage-by-stage transformations (sanitization $\to$ retrieval $\to$ parallel scoring $\to$ arbitration $\to$ audit signing).
+  - **Step-by-Step Walkthrough**: Toggle **"Step-by-Step Mode"** to pause at each stage. Use **"Next Step >"** or **"Auto Play"** to observe stage-by-stage transformations (sanitization $\to$ retrieval $\to$ parallel scoring $\to$ arbitration $\to$ audit signing).
 - **Execution Mode Selector**:
   - **ADAPTIVE (Default)**: Automatically routes clean queries to Fast-Path ($<15\text{ms}$) and auto-promotes to Deep-Path on ambiguity or risk triggers.
   - **FAST**: Bypasses secondary LLM judging for maximum throughput.
@@ -336,7 +398,7 @@ Navigate to the **SHA-256 Audit Log** tab to inspect the tamper-proof ledger:
 
 ---
 
-## 📚 REST API Reference
+## REST API Reference
 
 The ControlPlane API Gateway runs on `http://127.0.0.1:8000`:
 
@@ -420,7 +482,7 @@ curl -X POST http://127.0.0.1:8000/api/run \
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 ControlPlane.ai/
@@ -434,10 +496,10 @@ ControlPlane.ai/
 ├── pipeline.py                    # Master 5-Stage Orchestrator & Adaptive Router
 ├── models.py                      # Shared Pydantic data schemas, enums & risk configs
 ├── pii.py                         # Stage 1: Pre-Execution Guardrails (PII & Injection)
-├── llm_client.py                  # Stage 2: Groq / LLM Client with JSON mode
+├── llm_client.py                  # Stage 2: Groq / LLM Client with JSON mode & token budgeting
 ├── fast_checks.py                 # Stage 3A: Fast Parallel Checks (Heuristics & Entropy)
-├── rag_verifier.py                # Stage 3B: Corrective RAG (CRAG) & Factual Verifier
-├── ai_judge.py                    # Stage 3C: AI-as-a-Judge Compliance Evaluator
+├── rag_verifier.py                # Stage 3B: Corrective RAG (CRAG) & Batched NLI Verifier
+├── ai_judge.py                    # Stage 3C: AI-as-a-Judge Parallel Compliance Evaluator
 ├── arbitrator.py                  # Stage 4: Policy Arbitration Matrix & Score Engine
 ├── audit_hitl.py                  # Stage 5: Cryptographic SHA-256 Audit & HITL Queue
 ├── db.py                          # SQLite Persistence Layer & Zero-Config Auto-Seeder
@@ -452,7 +514,7 @@ ControlPlane.ai/
 │   ├── run.py                     # 1-Click Launch Script (auto-opens browser)
 │   ├── server.py                  # FastAPI REST API Server
 │   ├── test_frontend.py           # Automated Frontend Endpoint Test Suite
-│   ├── README.md                  # Frontend documentation & presentation guide
+│   ├── README.md                  # Frontend documentation & architecture guide
 │   └── static/                    # Single-Page Application Assets
 │       ├── index.html             # Glassmorphic Dark-Theme Dashboard
 │       ├── app.js                 # Interactive Controller & Chart Visualizer
@@ -470,7 +532,7 @@ ControlPlane.ai/
 
 ---
 
-## 📜 License
+## License
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more details.
 

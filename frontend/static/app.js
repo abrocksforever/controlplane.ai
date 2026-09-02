@@ -7,54 +7,65 @@
 let currentPipelineData = null;
 let currentStepIndex = 1;
 const TOTAL_STEPS = 7;
+let isWalkthroughCompleted = false;
 let autoPlayInterval = null;
 let activeScenarios = [];
 let allKnowledgeDocs = [];
 let activeHITLTicketId = null;
+let allTicketsMap = {};
+let allTicketsList = [];
+let hitlActiveFilter = 'all';
 
-// Stage Metadata Definitions
+// Stage Metadata Definitions (with exact DOM node IDs and status IDs)
 const STAGE_META = {
     1: {
         title: "Stage 1: Pre-Execution Guardrails (pii.py)",
         desc: "Scanning input prompt for sensitive PII entities (Luhn validated) and adversarial prompt injection signatures (<1ms)",
         cardId: "card-stage-1",
-        nodeId: "node-stage-1"
+        nodeId: "node-stage-1",
+        statusId: "node-status-1"
     },
     2: {
         title: "Stage 2: Primary LLM Generation & Context Retrieval (llm_client.py)",
         desc: "BM25 enterprise knowledge base retrieval + Corrective RAG (CRAG) retrieval confidence evaluation",
         cardId: "card-stage-2",
-        nodeId: "node-stage-2"
+        nodeId: "node-stage-2",
+        statusId: "node-status-2"
     },
     3: {
         title: "Stage 3A: Fast Parallel Checks (fast_checks.py)",
         desc: "Concurrent scatter-gather worker bus (<20ms SLA) executing Heuristic Agent and Statistical Loop/Entropy Scorer",
         cardId: "card-stage-3a",
-        nodeId: "node-stage-3a"
+        nodeId: "node-stage-3a",
+        statusId: "node-status-3a"
     },
     4: {
         title: "Stage 3B: RAG Grounding Verification (rag_verifier.py)",
         desc: "Exact numeric entity extraction, policy cross-referencing and semantic NLI claim entailment layer",
         cardId: "card-stage-3b",
-        nodeId: "node-stage-3b"
+        nodeId: "node-stage-3b",
+        statusId: "node-status-3b"
     },
     5: {
         title: "Stage 3C: AI-as-a-Judge Evaluation (ai_judge.py)",
         desc: "Secondary compliance LLM with JSON mode evaluating demographic bias, tone hostility, and company policy breaches",
         cardId: "card-stage-3c",
-        nodeId: "node-stage-3c"
+        nodeId: "node-stage-3c",
+        statusId: "node-status-3c"
     },
     6: {
         title: "Stage 4: Policy Arbitration & Risk Assessment (arbitrator.py)",
         desc: "Mathematical composite risk score calculation, FinCheck financial trigger check & 3-tier matrix routing",
         cardId: "card-stage-4",
-        nodeId: "node-stage-4"
+        nodeId: "node-stage-4",
+        statusId: "node-status-4"
     },
     7: {
         title: "Stage 5: Delivered Output & Cryptographic Governance (audit_hitl.py)",
         desc: "Delivering finalized text, enqueuing HITL quarantine ticket if needed, and generating SHA-256 hash chained audit log",
         cardId: "card-stage-5",
-        nodeId: "node-stage-5"
+        nodeId: "node-stage-5",
+        statusId: "node-status-5"
     }
 };
 
@@ -299,10 +310,13 @@ async function startDemonstration(isStepWalkthrough = true) {
 
         if (isStepWalkthrough) {
             // Start at step 1 and allow step-by-step navigation
+            isWalkthroughCompleted = false;
             jumpToStep(1);
         } else {
-            // Instant mode: reveal all steps and jump to summary/stage 5
-            jumpToStep(7);
+            // Instant mode: reveal all steps, mark walkthrough completed and jump to summary
+            isWalkthroughCompleted = true;
+            currentStepIndex = TOTAL_STEPS;
+            updateStepperView();
         }
 
         refreshIcons();
@@ -442,7 +456,7 @@ function populatePipelineData(data) {
     document.getElementById("s3c-bias-val").innerText = `${s3c.bias_score.toFixed(1)} / 10.0`;
     document.getElementById("s3c-tone-val").innerText = `${s3c.tone_score.toFixed(1)} / 10.0`;
     document.getElementById("s3c-policy-val").innerText = `${s3c.policy_risk_score.toFixed(1)} / 10.0`;
-    document.getElementById("s3c-notes-val").innerText = s3c.judge_notes || "Evaluated clean across compliance dimensions.";
+    document.getElementById("s3c-notes-val").innerText = s3c.judge_notes || (data.active_path === "FAST" ? "Skipped: Bypassed under Fast Path latency optimization (<25ms)." : "Evaluated clean across compliance dimensions.");
 
     // 7. Stage 4 Details
     document.getElementById("s4-latency-badge").innerText = `${s4.latency_ms.toFixed(2)} ms`;
@@ -474,7 +488,18 @@ function populatePipelineData(data) {
     const quarantineBox = document.getElementById("s5-quarantine-box");
     if (s5.quarantined_ticket_id) {
         quarantineBox.classList.remove("hidden");
-        document.getElementById("s5-ticket-id").innerText = s5.quarantined_ticket_id;
+        quarantineBox.className = "p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30";
+        quarantineBox.innerHTML = `
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2 text-amber-800 dark:text-amber-300">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600"></i>
+                    <span class="font-extrabold">Quarantined to HITL Queue (Ticket: <span id="s5-ticket-id">${s5.quarantined_ticket_id}</span>)</span>
+                </div>
+                <button onclick="openHITLModalFromDemo()" class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-lg text-xs transition-all shadow-md shadow-amber-500/20">
+                    Review Ticket Now &rarr;
+                </button>
+            </div>
+        `;
         activeHITLTicketId = s5.quarantined_ticket_id;
     } else {
         quarantineBox.classList.add("hidden");
@@ -488,6 +513,7 @@ function populatePipelineData(data) {
 
 function jumpToStep(stepIdx) {
     if (stepIdx < 1 || stepIdx > TOTAL_STEPS) return;
+    isWalkthroughCompleted = false;
     currentStepIndex = stepIdx;
     updateStepperView();
 }
@@ -496,10 +522,24 @@ function nextStep() {
     if (currentStepIndex < TOTAL_STEPS) {
         currentStepIndex++;
         updateStepperView();
+    } else if (currentStepIndex === TOTAL_STEPS && !isWalkthroughCompleted) {
+        // Complete the walkthrough
+        isWalkthroughCompleted = true;
+        updateStepperView();
+    } else if (isWalkthroughCompleted) {
+        // Restart walkthrough from stage 1
+        isWalkthroughCompleted = false;
+        jumpToStep(1);
     }
 }
 
 function prevStep() {
+    if (isWalkthroughCompleted) {
+        isWalkthroughCompleted = false;
+        currentStepIndex = TOTAL_STEPS;
+        updateStepperView();
+        return;
+    }
     if (currentStepIndex > 1) {
         currentStepIndex--;
         updateStepperView();
@@ -507,16 +547,69 @@ function prevStep() {
 }
 
 function updateStepperView() {
+    const nextBtn = document.getElementById("btn-next-step");
+    const prevBtn = document.getElementById("btn-prev-step");
+    const titleEl = document.getElementById("current-step-title");
+    const descEl = document.getElementById("current-step-desc");
+
+    // Check if the current pipeline run skipped any stages
+    const isEarlyBlocked = currentPipelineData?.steps?.step1_guardrails?.is_blocked;
+    const isFastPath = (currentPipelineData?.active_path === "FAST");
+
+    // Case 1: Walkthrough Completed state
+    if (isWalkthroughCompleted) {
+        titleEl.innerText = "Pipeline Walkthrough Completed";
+        descEl.innerText = "All pipeline stages processed and evaluated. Review the composite risk score, decision matrix, and delivered output below.";
+        prevBtn.disabled = false;
+        nextBtn.innerHTML = `<span>Restart</span> <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>`;
+
+        // Mark all nodes as passed or skipped
+        for (let i = 1; i <= TOTAL_STEPS; i++) {
+            const m = STAGE_META[i];
+            const nodeEl = document.getElementById(m.nodeId);
+            const statusEl = document.getElementById(m.statusId);
+            const cardEl = document.getElementById(m.cardId);
+
+            if (!nodeEl || !cardEl) continue;
+            cardEl.classList.remove("stage-card-spotlight");
+
+            if (isEarlyBlocked && i > 1) {
+                nodeEl.className = "stage-node p-2 rounded-xl text-center opacity-60";
+                if (statusEl) statusEl.innerText = "Bypassed";
+            } else if (isFastPath && i === 5) {
+                nodeEl.className = "stage-node p-2 rounded-xl text-center opacity-85 border-indigo-300 dark:border-indigo-700";
+                if (statusEl) statusEl.innerText = "Skipped (Fast)";
+            } else {
+                nodeEl.className = "stage-node passed-stage p-2 rounded-xl text-center";
+                if (statusEl) statusEl.innerText = "Passed ✓";
+            }
+        }
+
+        // Smooth scroll to summary panel
+        const summaryPanel = document.getElementById("pipeline-summary-panel");
+        if (summaryPanel) {
+            const stepperEl = document.getElementById("demonstration-stepper-container");
+            const stepperHeight = stepperEl ? stepperEl.offsetHeight : 140;
+            const topOffset = 64 + stepperHeight + 16;
+            const panelRect = summaryPanel.getBoundingClientRect();
+            const targetScrollY = window.pageYOffset + panelRect.top - topOffset;
+            window.scrollTo({ top: Math.max(0, targetScrollY), behavior: "smooth" });
+        }
+
+        refreshIcons();
+        return;
+    }
+
+    // Case 2: Active Step Walkthrough
     const meta = STAGE_META[currentStepIndex];
     if (!meta) return;
 
     // Update Header Text
-    document.getElementById("current-step-title").innerText = meta.title;
-    document.getElementById("current-step-desc").innerText = meta.desc;
+    titleEl.innerText = meta.title;
+    descEl.innerText = meta.desc;
 
     // Update Prev / Next buttons state
-    document.getElementById("btn-prev-step").disabled = (currentStepIndex === 1);
-    const nextBtn = document.getElementById("btn-next-step");
+    prevBtn.disabled = (currentStepIndex === 1);
     if (currentStepIndex === TOTAL_STEPS) {
         nextBtn.innerHTML = `<span>Complete</span> <i data-lucide="check" class="w-3.5 h-3.5"></i>`;
     } else {
@@ -527,14 +620,18 @@ function updateStepperView() {
     for (let i = 1; i <= TOTAL_STEPS; i++) {
         const m = STAGE_META[i];
         const nodeEl = document.getElementById(m.nodeId);
-        const statusEl = document.getElementById(`node-status-${i === 3 ? '3a' : i === 4 ? '3b' : i === 5 ? '3c' : i}`);
+        const statusEl = document.getElementById(m.statusId);
         const cardEl = document.getElementById(m.cardId);
 
         if (!nodeEl || !cardEl) continue;
 
+        const isSkippedStep = (isEarlyBlocked && i > 1) || (isFastPath && i === 5);
+
         if (i === currentStepIndex) {
             nodeEl.className = "stage-node active-stage p-2.5 rounded-xl text-center shadow-md";
-            if (statusEl) statusEl.innerText = "Inspecting";
+            if (statusEl) {
+                statusEl.innerText = isSkippedStep ? (isEarlyBlocked ? "Bypassed" : "Skipped (Fast)") : "Inspecting";
+            }
             cardEl.classList.add("stage-card-spotlight");
 
             // Smart smooth scroll directly below the sticky frozen stepper header
@@ -551,12 +648,19 @@ function updateStepperView() {
                 behavior: "smooth"
             });
         } else if (i < currentStepIndex) {
-            nodeEl.className = "stage-node passed-stage p-2.5 rounded-xl text-center";
-            if (statusEl) statusEl.innerText = "Passed ✓";
+            if (isSkippedStep) {
+                nodeEl.className = "stage-node p-2.5 rounded-xl text-center opacity-70";
+                if (statusEl) statusEl.innerText = isEarlyBlocked ? "Bypassed" : "Skipped (Fast)";
+            } else {
+                nodeEl.className = "stage-node passed-stage p-2.5 rounded-xl text-center";
+                if (statusEl) statusEl.innerText = "Passed ✓";
+            }
             cardEl.classList.remove("stage-card-spotlight");
         } else {
             nodeEl.className = "stage-node p-2.5 rounded-xl text-center";
-            if (statusEl) statusEl.innerText = "Pending";
+            if (statusEl) {
+                statusEl.innerText = isSkippedStep ? (isEarlyBlocked ? "Bypassed" : "Skipped (Fast)") : "Pending";
+            }
             cardEl.classList.remove("stage-card-spotlight");
         }
     }
@@ -577,7 +681,7 @@ function toggleAutoPlay() {
         text.innerText = "Pause";
         icon.setAttribute("data-lucide", "pause");
         autoPlayInterval = setInterval(() => {
-            if (currentStepIndex < TOTAL_STEPS) {
+            if (!isWalkthroughCompleted) {
                 nextStep();
             } else {
                 toggleAutoPlay();
@@ -589,6 +693,7 @@ function toggleAutoPlay() {
 
 function resetDemonstration() {
     if (autoPlayInterval) toggleAutoPlay();
+    isWalkthroughCompleted = false;
     jumpToStep(1);
 }
 
@@ -618,44 +723,127 @@ async function loadHITLTickets() {
             navBadge.classList.add("hidden");
         }
 
-        const listEl = document.getElementById("hitl-tickets-list");
-        if (data.all_tickets && data.all_tickets.length > 0) {
-            listEl.innerHTML = data.all_tickets.map(t => {
-                const isPending = (t.status === "PENDING");
-                const statusBadge = isPending 
-                    ? '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30">PENDING REVIEW</span>'
-                    : `<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${t.status}</span>`;
+        // Store into cache
+        allTicketsList = data.all_tickets || [];
+        allTicketsMap = {};
+        allTicketsList.forEach(t => {
+            allTicketsMap[t.ticket_id] = t;
+        });
 
-                return `
-                    <div class="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
-                        <div class="space-y-1 max-w-2xl">
-                            <div class="flex items-center space-x-2">
-                                <span class="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">${t.ticket_id}</span>
-                                ${statusBadge}
-                                ${t.is_financial_trigger ? '<span class="px-1.5 py-0.2 text-[9px] font-bold rounded bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300">FINANCIAL TRIGGER</span>' : ''}
-                                <span class="text-[11px] text-slate-400">${t.timestamp ? t.timestamp.substring(0, 19) : ''}</span>
-                            </div>
-                            <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Prompt: "${t.prompt}"</p>
-                            <p class="text-[11px] text-slate-600 dark:text-slate-400 truncate">Draft: "${t.candidate_response}"</p>
-                            <p class="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Reason: ${t.reason} (Score: ${t.composite_score.toFixed(2)}/10)</p>
-                        </div>
-                        ${isPending ? `
-                            <button onclick="openHITLModal('${t.ticket_id}', '${escapeQuotes(t.prompt)}', '${escapeQuotes(t.candidate_response)}')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold whitespace-nowrap shadow-sm">
-                                Review &amp; Resolve
-                            </button>
-                        ` : `
-                            <span class="text-xs text-slate-500 italic">Resolved: ${t.reviewer_notes || 'No notes'}</span>
-                        `}
-                    </div>
-                `;
-            }).join("");
-        } else {
-            listEl.innerHTML = '<p class="text-xs text-slate-400 dark:text-slate-500 italic">No tickets in the HITL review queue.</p>';
+        const filterPendingCount = document.getElementById("filter-pending-count");
+        if (filterPendingCount) {
+            filterPendingCount.innerText = data.pending_count;
         }
-        refreshIcons();
+
+        renderHITLTickets();
     } catch (e) {
         console.error("Failed loading HITL tickets:", e);
     }
+}
+
+function setHITLFilter(filterType) {
+    hitlActiveFilter = filterType;
+    ['all', 'pending', 'resolved'].forEach(f => {
+        const btn = document.getElementById(`hitl-filter-${f}`);
+        if (!btn) return;
+        if (f === filterType) {
+            btn.className = "px-2.5 py-1 font-bold rounded-md transition-all bg-white dark:bg-slate-700 shadow-xs text-slate-900 dark:text-slate-100";
+        } else {
+            btn.className = "px-2.5 py-1 font-bold rounded-md transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200";
+        }
+    });
+    renderHITLTickets();
+}
+
+function filterHITLTickets() {
+    renderHITLTickets();
+}
+
+function escapeHTML(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function renderHITLTickets() {
+    const listEl = document.getElementById("hitl-tickets-list");
+    if (!listEl) return;
+
+    const query = (document.getElementById("hitl-search-input")?.value || "").toLowerCase().trim();
+
+    let filtered = allTicketsList;
+
+    if (hitlActiveFilter === "pending") {
+        filtered = filtered.filter(t => t.status === "PENDING");
+    } else if (hitlActiveFilter === "resolved") {
+        filtered = filtered.filter(t => t.status !== "PENDING");
+    }
+
+    if (query) {
+        filtered = filtered.filter(t => 
+            (t.ticket_id && t.ticket_id.toLowerCase().includes(query)) ||
+            (t.prompt && t.prompt.toLowerCase().includes(query)) ||
+            (t.reason && t.reason.toLowerCase().includes(query)) ||
+            (t.reviewer_notes && t.reviewer_notes.toLowerCase().includes(query))
+        );
+    }
+
+    if (!filtered || filtered.length === 0) {
+        listEl.innerHTML = `<div class="text-center py-8 text-slate-400 dark:text-slate-500 italic text-xs">
+            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+            <p>No tickets found matching current filter (${hitlActiveFilter}).</p>
+        </div>`;
+        refreshIcons();
+        return;
+    }
+
+    listEl.innerHTML = filtered.map(t => {
+        const isPending = (t.status === "PENDING");
+        const statusBadge = isPending 
+            ? '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30">PENDING REVIEW</span>'
+            : t.status === "ALLOW"
+            ? '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">ALLOW</span>'
+            : t.status === "EDIT"
+            ? '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30">EDITED</span>'
+            : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-500/30">BLOCKED</span>';
+
+        return `
+            <div class="p-4 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-colors">
+                <div class="space-y-1 max-w-2xl">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">${t.ticket_id}</span>
+                        ${statusBadge}
+                        ${t.is_financial_trigger ? '<span class="px-1.5 py-0.2 text-[9px] font-bold rounded bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300">FINANCIAL TRIGGER</span>' : ''}
+                        <span class="text-[11px] text-slate-400">${t.timestamp ? t.timestamp.substring(0, 19) : ''}</span>
+                    </div>
+                    <p class="text-xs text-slate-800 dark:text-slate-200 font-bold">Prompt: "${escapeHTML(t.prompt || '')}"</p>
+                    <p class="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2">Draft: "${escapeHTML(t.candidate_response || '')}"</p>
+                    <p class="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Reason: ${escapeHTML(t.reason || '')} (Score: ${(t.composite_score || 0).toFixed(2)}/10)</p>
+                </div>
+                <div class="flex items-center space-x-2 shrink-0">
+                    ${isPending ? `
+                        <button onclick="openHITLModalById('${t.ticket_id}')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center space-x-1.5 active:scale-95 transition-all">
+                            <i data-lucide="check-square" class="w-3.5 h-3.5"></i>
+                            <span>Review &amp; Resolve</span>
+                        </button>
+                    ` : `
+                        <div class="flex flex-col items-end gap-1.5">
+                            <span class="text-xs text-slate-500 italic max-w-[200px] truncate text-right" title="${escapeHTML(t.reviewer_notes || '')}">Notes: ${escapeHTML(t.reviewer_notes || 'Resolved')}</span>
+                            <button onclick="openHITLModalById('${t.ticket_id}')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold whitespace-nowrap border border-slate-200 dark:border-slate-700 flex items-center space-x-1 shadow-xs active:scale-95 transition-all">
+                                <i data-lucide="eye" class="w-3.5 h-3.5 text-indigo-500"></i>
+                                <span>View / Re-evaluate</span>
+                            </button>
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }).join("");
+    refreshIcons();
 }
 
 function escapeQuotes(str) {
@@ -663,33 +851,97 @@ function escapeQuotes(str) {
     return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-function openHITLModal(ticketId, promptText, candidateText) {
+async function openHITLModalById(ticketId) {
+    console.log("Opening HITL Modal for ticket:", ticketId);
+    let t = allTicketsMap[ticketId];
+    if (!t && currentPipelineData && (currentPipelineData.ticket_id === ticketId || currentPipelineData.steps?.step5_governance?.quarantined_ticket_id === ticketId)) {
+        t = {
+            ticket_id: ticketId,
+            prompt: currentPipelineData.prompt,
+            candidate_response: currentPipelineData.steps?.step2_generation?.candidate_response || "",
+            reviewer_notes: ""
+        };
+    }
+
+    // Fetch directly from backend API if not present in memory cache
+    if (!t) {
+        try {
+            const res = await fetch(`/api/hitl/ticket/${ticketId}`);
+            if (res.ok) {
+                const data = await res.json();
+                t = data.ticket;
+                allTicketsMap[ticketId] = t;
+            }
+        } catch (e) {
+            console.error("Failed fetching ticket from API:", e);
+        }
+    }
+
+    if (!t) {
+        alert(`Ticket ${ticketId} could not be loaded. Please refresh the queue.`);
+        return;
+    }
+
     activeHITLTicketId = ticketId;
-    document.getElementById("modal-ticket-id").innerText = ticketId;
-    document.getElementById("modal-prompt-text").innerText = promptText;
-    document.getElementById("modal-candidate-text").value = candidateText;
-    document.getElementById("modal-reviewer-notes").value = "";
-    document.getElementById("hitl-action-modal").classList.remove("hidden");
+    const idEl = document.getElementById("modal-ticket-id");
+    const promptEl = document.getElementById("modal-prompt-text");
+    const candidateEl = document.getElementById("modal-candidate-text");
+    const notesEl = document.getElementById("modal-reviewer-notes");
+    const modalEl = document.getElementById("hitl-action-modal");
+
+    if (idEl) idEl.innerText = ticketId;
+    if (promptEl) promptEl.innerText = t.prompt || "";
+    if (candidateEl) candidateEl.value = t.candidate_response || "";
+    if (notesEl) notesEl.value = t.reviewer_notes || "";
+
+    if (modalEl) {
+        modalEl.style.display = "flex";
+        modalEl.classList.remove("hidden");
+    }
+    refreshIcons();
+}
+
+function openHITLModal(ticketId, promptText, candidateText) {
+    if (ticketId) {
+        openHITLModalById(ticketId);
+        return;
+    }
+    activeHITLTicketId = ticketId;
+    const idEl = document.getElementById("modal-ticket-id");
+    const promptEl = document.getElementById("modal-prompt-text");
+    const candidateEl = document.getElementById("modal-candidate-text");
+    const notesEl = document.getElementById("modal-reviewer-notes");
+    const modalEl = document.getElementById("hitl-action-modal");
+
+    if (idEl) idEl.innerText = ticketId || "";
+    if (promptEl) promptEl.innerText = promptText || "";
+    if (candidateEl) candidateEl.value = candidateText || "";
+    if (notesEl) notesEl.value = "";
+    if (modalEl) {
+        modalEl.style.display = "flex";
+        modalEl.classList.remove("hidden");
+    }
     refreshIcons();
 }
 
 function openHITLModalFromDemo() {
     if (!activeHITLTicketId || !currentPipelineData) return;
-    openHITLModal(
-        activeHITLTicketId,
-        currentPipelineData.prompt,
-        currentPipelineData.steps.step2_generation.candidate_response
-    );
+    openHITLModalById(activeHITLTicketId);
 }
 
 function closeHITLModal() {
-    document.getElementById("hitl-action-modal").classList.add("hidden");
+    const modalEl = document.getElementById("hitl-action-modal");
+    if (modalEl) {
+        modalEl.style.display = "none";
+        modalEl.classList.add("hidden");
+    }
     activeHITLTicketId = null;
 }
 
 async function submitHITLResolution(action) {
     if (!activeHITLTicketId) return;
 
+    const currentTicketId = activeHITLTicketId;
     const notes = document.getElementById("modal-reviewer-notes").value.trim();
     const editedText = document.getElementById("modal-candidate-text").value.trim();
 
@@ -698,7 +950,7 @@ async function submitHITLResolution(action) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                ticket_id: activeHITLTicketId,
+                ticket_id: currentTicketId,
                 action: action,
                 reviewer_notes: notes || `Resolved as ${action}`,
                 edited_text: (action === "EDIT") ? editedText : null
@@ -710,12 +962,144 @@ async function submitHITLResolution(action) {
             throw new Error(err.detail || "Failed resolving ticket");
         }
 
+        const data = await res.json();
+        const resolvedTicket = data.resolved_ticket;
+
         closeHITLModal();
         loadHITLTickets();
-        alert(`Ticket '${activeHITLTicketId}' successfully resolved via ${action}!`);
+        loadAuditLogs();
+
+        // Reactively update the Demonstration UI (Stage 5 and Summary Panel)
+        applyHITLResolutionToDemoUI(resolvedTicket);
+
     } catch (e) {
         alert(`Error: ${e.message}`);
     }
+}
+
+function applyHITLResolutionToDemoUI(ticket) {
+    if (!ticket) return;
+
+    // Synchronize currentPipelineData state if applicable
+    if (currentPipelineData) {
+        currentPipelineData.decision = `RESOLVED_${ticket.status}`;
+        currentPipelineData.final_response = ticket.final_delivered_text;
+        if (currentPipelineData.steps && currentPipelineData.steps.step5_governance) {
+            currentPipelineData.steps.step5_governance.final_delivered_response = ticket.final_delivered_text;
+        }
+    }
+
+    // 1. Update Final Delivered Text in Stage 5
+    const deliveredEl = document.getElementById("s5-delivered-text");
+    if (deliveredEl && ticket.final_delivered_text) {
+        deliveredEl.innerText = ticket.final_delivered_text;
+        deliveredEl.classList.add("border-emerald-400", "ring-2", "ring-emerald-400/40");
+        setTimeout(() => {
+            deliveredEl.classList.remove("ring-2", "ring-emerald-400/40");
+        }, 1500);
+    }
+
+    // 2. Transform the Quarantine Box into a Confirmed Human Sign-off Banner
+    const quarantineBox = document.getElementById("s5-quarantine-box");
+    if (quarantineBox) {
+        quarantineBox.classList.remove("hidden");
+        
+        let config = {
+            border: "border-emerald-300 dark:border-emerald-500/40",
+            bg: "bg-emerald-50 dark:bg-emerald-500/10",
+            icon: "check-circle",
+            iconColor: "text-emerald-600 dark:text-emerald-400",
+            textColor: "text-emerald-900 dark:text-emerald-200",
+            badgeBg: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/30",
+            badgeText: "RELEASED TO USER",
+            title: `Ticket Resolved & Approved (ALLOW) by Human Reviewer`
+        };
+
+        if (ticket.status === "EDIT") {
+            config = {
+                border: "border-indigo-300 dark:border-indigo-500/40",
+                bg: "bg-indigo-50 dark:bg-indigo-500/10",
+                icon: "file-edit",
+                iconColor: "text-indigo-600 dark:text-indigo-400",
+                textColor: "text-indigo-900 dark:text-indigo-200",
+                badgeBg: "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-500/30",
+                badgeText: "EDITED COPY RELEASED",
+                title: `Ticket Resolved with Compliance Edits (EDIT)`
+            };
+        } else if (ticket.status === "BLOCK") {
+            config = {
+                border: "border-rose-300 dark:border-rose-500/40",
+                bg: "bg-rose-50 dark:bg-rose-500/10",
+                icon: "shield-alert",
+                iconColor: "text-rose-600 dark:text-rose-400",
+                textColor: "text-rose-900 dark:text-rose-200",
+                badgeBg: "bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-500/30",
+                badgeText: "BLOCKED BY REVIEWER",
+                title: `Ticket Rejected & Blocked (BLOCK) by Reviewer`
+            };
+        }
+
+        quarantineBox.className = `p-4 rounded-xl border ${config.border} ${config.bg} transition-all`;
+        quarantineBox.innerHTML = `
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="flex items-center space-x-2 ${config.textColor}">
+                    <i data-lucide="${config.icon}" class="w-4 h-4 ${config.iconColor}"></i>
+                    <span class="font-extrabold">${config.title}</span>
+                    <span class="font-mono text-xs text-slate-500 font-bold">[Ticket: ${ticket.ticket_id}]</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="px-2 py-0.5 text-[10px] font-extrabold rounded border ${config.badgeBg}">${config.badgeText}</span>
+                    <button onclick="openHITLModal('${ticket.ticket_id}', '${escapeQuotes(ticket.prompt)}', '${escapeQuotes(ticket.candidate_response)}')" class="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline ml-1">
+                        View Review Details
+                    </button>
+                </div>
+            </div>
+            <div class="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                <div><span class="font-bold">Reviewer Sign-off Notes:</span> "${ticket.reviewer_notes || 'Approved for release'}"</div>
+                <div class="text-[10px] text-slate-400 font-mono">Timestamp: ${ticket.timestamp ? ticket.timestamp.substring(0, 19) : 'Just now'}</div>
+            </div>
+        `;
+    }
+
+    // 3. Update the Top Summary Panel
+    const decisionEl = document.getElementById("summary-decision-text");
+    const badgeIconEl = document.getElementById("summary-badge-icon");
+    const reasonEl = document.getElementById("summary-reason-text");
+
+    if (decisionEl) {
+        decisionEl.innerText = `RESOLVED: ${ticket.status}`;
+        if (ticket.status === "ALLOW") {
+            decisionEl.className = "text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight";
+            if (badgeIconEl) {
+                badgeIconEl.className = "w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 pulse-emerald";
+                badgeIconEl.innerText = "✓";
+            }
+        } else if (ticket.status === "EDIT") {
+            decisionEl.className = "text-lg font-black text-indigo-600 dark:text-indigo-400 tracking-tight";
+            if (badgeIconEl) {
+                badgeIconEl.className = "w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-500/30 pulse-indigo";
+                badgeIconEl.innerText = "✏️";
+            }
+        } else if (ticket.status === "BLOCK") {
+            decisionEl.className = "text-lg font-black text-rose-600 dark:text-rose-400 tracking-tight";
+            if (badgeIconEl) {
+                badgeIconEl.className = "w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-500/30 pulse-rose";
+                badgeIconEl.innerText = "✕";
+            }
+        }
+    }
+
+    if (reasonEl) {
+        reasonEl.innerText = `Human Reviewer sign-off: ${ticket.reviewer_notes || ticket.status}`;
+    }
+
+    // 4. Update Node Status in Stepper (Stage 5)
+    const nodeStatus5 = document.getElementById("node-status-5");
+    if (nodeStatus5) {
+        nodeStatus5.innerText = `Resolved ✓`;
+    }
+
+    refreshIcons();
 }
 
 // ============================================================================
@@ -808,7 +1192,7 @@ async function loadAuditLogs() {
                         <th class="py-2.5 px-3">Timestamp</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-850">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-855">
                     ${data.entries.map(e => `
                         <tr class="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                             <td class="py-2.5 px-3 font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[160px]" title="${e.entry_hash}">${e.entry_hash.substring(0, 16)}...</td>
@@ -850,3 +1234,14 @@ async function runAuditVerification() {
         alert(`Verification Error: ${e.message}`);
     }
 }
+
+// Expose functions globally on window
+window.openHITLModalById = openHITLModalById;
+window.openHITLModal = openHITLModal;
+window.openHITLModalFromDemo = openHITLModalFromDemo;
+window.closeHITLModal = closeHITLModal;
+window.submitHITLResolution = submitHITLResolution;
+window.setHITLFilter = setHITLFilter;
+window.filterHITLTickets = filterHITLTickets;
+window.switchTab = switchTab;
+

@@ -253,44 +253,74 @@ def _normalize_token(val: str) -> str:
     return re.sub(r"[,\.:;!?]+$", "", re.sub(r"\s+", " ", val.strip().lower()))
 
 
+import os
+
+
+def _run_batch_nli_entailment(
+    sentences: List[str],
+    source_text: str
+) -> List[Tuple[bool, str]]:
+    """
+    Batched Hybrid NLI Entailment Layer:
+    Evaluates all candidate sentences needing verification in a SINGLE call to the LLM,
+    reducing latency from N * T_llm (e.g. 26s) to 1 * T_llm (e.g. <1s).
+    """
+    if not sentences:
+        return []
+
+    try:
+        from llm_client import call_llm
+        
+        numbered_sentences = "\n".join(f"{i+1}. \"{s}\"" for i, s in enumerate(sentences))
+        nli_prompt = (
+            f"Premise (Source Policy):\n\"\"\"{source_text}\"\"\"\n\n"
+            f"Hypotheses to verify:\n{numbered_sentences}\n\n"
+            "For each hypothesis (1 to N), determine whether the premise entails, contradicts, or leaves it unsupported.\n"
+            "Return ONLY a JSON object: {\"results\": [{\"index\": 1, \"label\": \"entailed\" | \"contradicted\" | \"unsupported\"}, ...]}"
+        )
+        
+        eval_model = os.environ.get("CONTROLPLANE_EVAL_MODEL", "openai/gpt-oss-20b")
+        res = call_llm(
+            prompt=nli_prompt,
+            system_instruction="You are a strict Natural Language Inference (NLI) evaluator.",
+            json_mode=True,
+            model=eval_model,
+            max_tokens=250
+        )
+        
+        if isinstance(res, dict) and "results" in res:
+            eval_map = {}
+            for item in res["results"]:
+                idx = int(item.get("index", 0)) - 1
+                lbl = str(item.get("label", "unsupported")).lower()
+                eval_map[idx] = (lbl == "entailed", lbl)
+            
+            output = []
+            for i in range(len(sentences)):
+                output.append(eval_map.get(i, (False, "unsupported")))
+            return output
+
+    except Exception as e:
+        logger.debug(f"Batched NLI Entailment fallback to heuristic due to: {e}")
+
+    # Fallback heuristic: token overlap
+    output = []
+    src_tokens = set(re.findall(r"\b\w+\b", source_text.lower()))
+    for s in sentences:
+        s_tokens = set(re.findall(r"\b\w+\b", s.lower()))
+        overlap = len(s_tokens.intersection(src_tokens)) / max(len(s_tokens), 1)
+        is_entailed = overlap >= 0.40
+        output.append((is_entailed, "entailed" if is_entailed else "unsupported"))
+    return output
+
+
 def _run_nli_entailment(
     sentence: str,
     source_text: str
 ) -> Tuple[bool, str]:
-    """
-    Hybrid NLI Entailment Layer: Uses LLM to verify whether a candidate claim
-    is entailed, contradicted, or unsupported by the source text.
-    """
-    try:
-        from llm_client import call_llm
-        
-        nli_prompt = (
-            f"Premise (Source Policy):\n\"{source_text}\"\n\n"
-            f"Hypothesis (Candidate Claim):\n\"{sentence}\"\n\n"
-            "Does the premise entail, contradict, or leave unsupported the hypothesis?\n"
-            "Return ONLY a JSON object: {\"label\": \"entailed\" | \"contradicted\" | \"unsupported\", "
-            "\"reason\": \"<brief explanation>\"}"
-        )
-        
-        res = call_llm(
-            prompt=nli_prompt,
-            system_instruction="You are a strict Natural Language Inference (NLI) evaluator.",
-            json_mode=True
-        )
-        
-        if isinstance(res, dict):
-            label = str(res.get("label", "unsupported")).lower()
-            return label == "entailed", label
-            
-    except Exception as e:
-        logger.debug(f"NLI Entailment fallback to heuristic due to: {e}")
-
-    # Fallback heuristic: token overlap
-    s_tokens = set(re.findall(r"\b\w+\b", sentence.lower()))
-    src_tokens = set(re.findall(r"\b\w+\b", source_text.lower()))
-    overlap = len(s_tokens.intersection(src_tokens)) / max(len(s_tokens), 1)
-    is_entailed = overlap >= 0.40
-    return is_entailed, "entailed" if is_entailed else "unsupported"
+    """Single sentence NLI wrapper for backward compatibility."""
+    results = _run_batch_nli_entailment([sentence], source_text)
+    return results[0] if results else (False, "unsupported")
 
 
 def verify_factual_grounding(
@@ -389,7 +419,7 @@ def verify_factual_grounding(
             numeric_mismatches.append(f"Unverified numeric claim '{num}' not found in source policy.")
             penalty += 3.5
 
-    # Gate C: Sentence-Level Fact Consistency (NLI Entailment)
+    # Gate C: Sentence-Level Fact Consistency (Batched NLI Entailment)
     sentences = [s.strip() for s in re.split(r"[.!?]", candidate_response) if len(s.strip()) > 15]
     source_tokens = set(re.findall(r"\b\w+\b", combined_source_lower))
     
@@ -399,6 +429,7 @@ def verify_factual_grounding(
         re.IGNORECASE
     )
 
+    sentences_for_nli = []
     for sentence in sentences:
         if DISCLAIMER_PATTERNS.search(sentence.strip()):
             continue
@@ -411,15 +442,21 @@ def verify_factual_grounding(
 
         overlap_ratio = len(s_content.intersection(source_tokens)) / max(len(s_content), 1)
 
-        if overlap_ratio < 0.25:
-            # Low token overlap — verify via semantic NLI entailment
-            if use_nli:
-                is_supported, nli_label = _run_nli_entailment(sentence, combined_source_text)
-            else:
-                is_supported, nli_label = False, "unsupported"
+        # Low token overlap: Only evaluate via NLI if sentence makes empirical/policy assertions
+        # Polite pleasantries (e.g. "Have a great trip!") do not assert factual policy claims
+        if overlap_ratio < 0.25 and evaluate_factual_assertions(sentence):
+            sentences_for_nli.append(sentence)
+
+    if sentences_for_nli:
+        if use_nli:
+            nli_results = _run_batch_nli_entailment(sentences_for_nli, combined_source_text)
+        else:
+            nli_results = [(False, "unsupported")] * len(sentences_for_nli)
+
+        for sent, (is_supported, nli_label) in zip(sentences_for_nli, nli_results):
             if not is_supported:
                 unsupported_claims.append(
-                    f"Ungrounded claim (NLI: {nli_label}): '{sentence}'"
+                    f"Ungrounded claim (NLI: {nli_label}): '{sent}'"
                 )
                 penalty += 3.5 if nli_label == "contradicted" else 2.5
 

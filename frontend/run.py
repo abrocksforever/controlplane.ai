@@ -31,8 +31,8 @@ def main():
     url = f"http://{host}:{port}"
     
     print("\n" + "=" * 70)
-    print("  🛡️  CONTROLPLANE.AI — STEP-BY-STEP DEMONSTRATION UI")
-    print(f"  🌐  Opening web interface at {url}")
+    print("  [*] CONTROLPLANE.AI -- STEP-BY-STEP DEMONSTRATION UI")
+    print(f"  [*] Opening web interface at {url}")
     print("=" * 70 + "\n")
 
     threading.Thread(target=open_browser, args=(url,), daemon=True).start()

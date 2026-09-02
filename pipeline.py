@@ -7,7 +7,7 @@ Executes the complete 5-Stage Responsible AI Control Plane lifecycle:
 2. Primary LLM Generation: Invokes PrimLLM on sanitized prompt
 3. Stage 3A: Fast Parallel Checks (Heuristics & Statistical Scorer via ParallelBus)
 4. Stage 3B: RAG Grounding Verification (Enterprise Retriever & Factual Verifier)
-5. Stage 3C: AI-as-a-Judge Sequential Evaluation (Bias, Tone, Policy)
+5. Stage 3C: AI-as-a-Judge Parallel Compliance Evaluation (Bias, Tone, Policy)
 6. Stage 4: Policy Arbitration & Risk Assessment (Composite Risk Score, FinCheck, TierCheck)
 7. Stage 5: Immutable Audit Logging (SHA-256 Hash Chain) & HITL Review Queue
 """
@@ -142,7 +142,8 @@ def run_controlplane(
     try:
         candidate_response = call_llm(
             prompt=stage1_res.sanitized_prompt,
-            system_instruction=system_instruction
+            system_instruction=system_instruction,
+            max_tokens=250
         )
         if isinstance(candidate_response, dict):
             candidate_response = str(candidate_response)
@@ -152,53 +153,62 @@ def run_controlplane(
     waterfall["primary_llm_generation_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
     # ========================================================================
-    # STAGE 3A: Fast Parallel Checks (Heuristics & Statistical Scorer)
-    # ========================================================================
-    t0 = time.perf_counter()
-    stage3a_res = run_stage3a_fast_checks(candidate_response, prompt)
-    waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0) * 1000, 2)
-
-    # ========================================================================
-    # ADAPTIVE LATENCY ROUTER: Fast-Path vs Deep-Path Elevation
+    # ADAPTIVE LATENCY ROUTER & STAGE 3 PARALLEL INSPECTION BUS
+    # Runs Stage 3A (Fast Checks), Stage 3B (Batched Grounding), and
+    # Stage 3C (AI Judge) concurrently via ThreadPoolExecutor
     # ========================================================================
     is_fin_trigger, _ = check_financial_trigger(prompt, candidate_response)
-
-    # Dynamically elevate to Deep-Path if triggers or ambiguity detected
     needs_deep = (
         is_fin_trigger or
-        crag_status != CRAGStatus.HIGH_CONFIDENCE or
-        stage3a_res.heuristic_risk > 2.0 or
-        stage3a_res.stat_risk > 2.0
+        crag_status != CRAGStatus.HIGH_CONFIDENCE
     )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    t_s3 = time.perf_counter()
     if needs_deep:
         active_path = "DEEP"
-        use_nli = True
-        run_judge = True
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            fut_3a = executor.submit(run_stage3a_fast_checks, candidate_response, prompt)
+            fut_3b = executor.submit(verify_factual_grounding, candidate_response, prompt, None, True)
+            fut_3c = executor.submit(run_ai_judge, prompt, candidate_response, None, None)
+
+            t0_a = time.perf_counter()
+            stage3a_res = fut_3a.result()
+            waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0_a) * 1000, 2)
+
+            t0_b = time.perf_counter()
+            stage3b_res = fut_3b.result()
+            waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0_b) * 1000, 2)
+
+            t0_c = time.perf_counter()
+            stage3c_res = fut_3c.result()
+            waterfall["stage3c_ai_judge_ms"] = round((time.perf_counter() - t0_c) * 1000, 2)
     else:
         active_path = "FAST"
-        use_nli = False
-        run_judge = False
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_3a = executor.submit(run_stage3a_fast_checks, candidate_response, prompt)
+            fut_3b = executor.submit(verify_factual_grounding, candidate_response, prompt, None, False)
 
-    # ========================================================================
-    # STAGE 3B: RAG Grounding Verification (RetEngine + RAGVerifier)
-    # ========================================================================
-    t0 = time.perf_counter()
-    stage3b_res = verify_factual_grounding(
-        candidate_response=candidate_response,
-        query=prompt,
-        use_nli=use_nli
-    )
-    waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            t0_a = time.perf_counter()
+            stage3a_res = fut_3a.result()
+            waterfall["stage3a_fast_checks_ms"] = round((time.perf_counter() - t0_a) * 1000, 2)
 
-    # ========================================================================
-    # STAGE 3C: AI-as-a-Judge Evaluation (Executed on DEEP path)
-    # ========================================================================
-    t0 = time.perf_counter()
-    if run_judge:
-        stage3c_res = run_ai_judge(prompt, candidate_response, stage3a_res, stage3b_res)
-    else:
-        stage3c_res = None
-    waterfall["stage3c_ai_judge_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+            t0_b = time.perf_counter()
+            stage3b_res = fut_3b.result()
+            waterfall["stage3b_rag_grounding_ms"] = round((time.perf_counter() - t0_b) * 1000, 2)
+
+        # Check if Stage 3A findings warrant post-elevation
+        if stage3a_res.heuristic_risk > 2.0 or stage3a_res.stat_risk > 2.0:
+            active_path = "DEEP"
+            t0_c = time.perf_counter()
+            stage3c_res = run_ai_judge(prompt, candidate_response, stage3a_res, stage3b_res)
+            waterfall["stage3c_ai_judge_ms"] = round((time.perf_counter() - t0_c) * 1000, 2)
+        else:
+            stage3c_res = None
+            waterfall["stage3c_ai_judge_ms"] = 0.0
+
+    waterfall["stage3_parallel_bus_ms"] = round((time.perf_counter() - t_s3) * 1000, 2)
 
     # ========================================================================
     # STAGE 4: Policy Arbitration & Risk Assessment (CalcScore, FinCheck, TierCheck)

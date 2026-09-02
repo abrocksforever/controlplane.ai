@@ -1,5 +1,5 @@
-﻿"""
-ai_judge.py - Stage 3C: AI-as-a-Judge Sequential Evaluation
+"""
+ai_judge.py - Stage 3C: AI-as-a-Judge Parallel Compliance Evaluation
 ControlPlane.ai (PS1 Architecture)
 
 Features:
@@ -112,10 +112,14 @@ def run_ai_judge(
     judge_prompt = _build_judge_prompt(prompt, candidate_response, stage3a_res, stage3b_res)
 
     try:
+        import os
+        eval_model = os.environ.get("CONTROLPLANE_EVAL_MODEL", "openai/gpt-oss-20b")
         raw_eval = call_llm(
             prompt=judge_prompt,
             system_instruction=JUDGE_SYSTEM_INSTRUCTION,
-            json_mode=True
+            json_mode=True,
+            model=eval_model,
+            max_tokens=400
         )
 
         if isinstance(raw_eval, dict):
