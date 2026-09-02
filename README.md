@@ -490,7 +490,6 @@ ControlPlane.ai/
 ├── .gitignore                     # Git ignore rules for caches, DBs, and logs
 ├── LICENSE                        # MIT Open Source License
 ├── README.md                      # Comprehensive project documentation
-├── SYSTEM_DOCUMENTATION.md        # Technical specification & mathematical proofs
 ├── requirements.txt               # Pinned Python package dependencies
 │
 ├── pipeline.py                    # Master 5-Stage Orchestrator & Adaptive Router
@@ -504,6 +503,8 @@ ControlPlane.ai/
 ├── audit_hitl.py                  # Stage 5: Cryptographic SHA-256 Audit & HITL Queue
 ├── db.py                          # SQLite Persistence Layer & Zero-Config Auto-Seeder
 ├── logging_config.py              # Structured JSON Logging & ContextVar Trace IDs
+├── cli.py                         # Interactive Live Terminal Interface for Real-Time Testing
+├── demo.py                        # Standalone Scenario Runner & Verification Harness
 ├── benchmark_airbnb.py            # Official 50-Question Airbnb Compliance Benchmark
 │
 ├── airbnb-grounding-rag-kb/       # Authoritative Airbnb Knowledge Base Corpus
@@ -514,7 +515,6 @@ ControlPlane.ai/
 │   ├── run.py                     # 1-Click Launch Script (auto-opens browser)
 │   ├── server.py                  # FastAPI REST API Server
 │   ├── test_frontend.py           # Automated Frontend Endpoint Test Suite
-│   ├── README.md                  # Frontend documentation & architecture guide
 │   └── static/                    # Single-Page Application Assets
 │       ├── index.html             # Glassmorphic Dark-Theme Dashboard
 │       ├── app.js                 # Interactive Controller & Chart Visualizer
