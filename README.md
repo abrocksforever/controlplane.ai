@@ -309,30 +309,8 @@ pytest -v
 
 The web interface (`frontend/`) is an executive-ready, glassmorphic Single-Page Application (SPA) designed for interactive step-by-step demonstration, real-time risk inspection, and human compliance operations.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│  ControlPlane.ai   [Live Demonstration] [HITL Queue (3)] [Knowledge Base] [Audit Log] [Theme] │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  PRESET SCENARIOS:                                                                        │
-│ [ 1. Safe UPI Inquiry ]  [ 2. Financial $3.5k Payout ]  [ 3. Credit Card PII ]            │
-│ [ 4. Ungrounded Refund Trap ]  [ 5. DAN Jailbreak Attack ]  [ 6. Fabricated Guarantee ]     │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  PROMPT INPUT & CONTROLS:                                                                   │
-│  ┌──────────────────────────────────────────────────────────┐  Execution: [ADAPTIVE ▼]      │
-│  │ What is the refund timeline for UPI payments in India?   │  [Run Full Pipeline]        │
-│  └──────────────────────────────────────────────────────────┘  [Step-by-Step Mode]       │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  STEP-BY-STEP INSPECTION WATERFALL:                                                         │
-│  [● Stage 1: Guardrails] ──► [● Stage 2: CRAG] ──► [● Stage 3: Checks] ──► [● Stage 4: Arb] │
-│                                                                                             │
-│  ┌─────────────────────────┐ ┌──────────────────────────┐ ┌───────────────────────────────┐ │
-│  │ Stage 1: Pre-Guardrails │ │ Stage 2: CRAG Grounding  │ │ Stage 4: Policy Arbitration   │ │
-│  │ PII Detected: None      │ │ Retrieval: ρ = 1.00 (High│ │ Decision: [ ALLOW ]            │ │
-│  │ Injection Risk: 0.0/10  │ │ Top Doc: KB-AIRBNB-004   │ │ Composite Risk Score: 0.00/10 │ │
-│  │ Latency: 0.15ms         │ │ Latency: 6.80ms          │ │ Latency: 0.05ms               │ │
-│  └─────────────────────────┘ └──────────────────────────┘ └───────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+![ControlPlane.ai Interactive Web Dashboard](assets/dashboard.png)
+
 
 ### 1. Live Demonstration & Stepper Mode (`/static/index.html`)
 
@@ -506,6 +484,9 @@ ControlPlane.ai/
 ├── cli.py                         # Interactive Live Terminal Interface for Real-Time Testing
 ├── demo.py                        # Standalone Scenario Runner & Verification Harness
 ├── benchmark_airbnb.py            # Official 50-Question Airbnb Compliance Benchmark
+│
+├── assets/                        # Static Documentation Assets
+│   └── dashboard.png              # Interactive Web Dashboard Screenshot
 │
 ├── airbnb-grounding-rag-kb/       # Authoritative Airbnb Knowledge Base Corpus
 │   ├── cleaned/                   # 20 Authoritative Markdown Policy Documents
